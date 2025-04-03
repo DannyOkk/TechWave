@@ -5,13 +5,13 @@ from django.contrib.auth.models import User  # Usa el sistema de usuarios de Dja
 
 # Cliente (Información adicional del usuario)
 class Cliente(models.Model):
-    usuario = models.OneToOneField(User, on_delete=models.CASCADE)
+    nombre = models.CharField(max_length=100, unique=True, default='Anonimo')
     direccion = models.TextField()
     telefono = models.CharField(max_length=15)
     fecha_registro = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return self.usuario.username
+        return self.nombre
     
 # Categoría de Producto
 class Categoria(models.Model):
