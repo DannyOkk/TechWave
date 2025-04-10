@@ -4,7 +4,7 @@ from django.db import models
 from django.contrib.auth.models import User  # Usa el sistema de usuarios de Django
 
 # Cliente (Información adicional del usuario)
-class Cliente(models.Model):
+class Client(models.Model):
     nombre = models.CharField(max_length=100, unique=True, default='Anonimo')
     direccion = models.TextField()
     telefono = models.CharField(max_length=15)
@@ -14,15 +14,15 @@ class Cliente(models.Model):
         return self.nombre
     
 # Categoría de Producto
-class Categoria(models.Model):
+class Category(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.TextField(blank=True)
 
     def __str__(self):
         return self.nombre
 
-# Proveedor
-class Proveedor(models.Model):
+""" Proveedor
+class Supplier(models.Model):
     nombre = models.CharField(max_length=255)
     contacto = models.CharField(max_length=100)
     telefono = models.CharField(max_length=20)
@@ -30,20 +30,20 @@ class Proveedor(models.Model):
 
     def __str__(self):
         return self.nombre
-
-class Producto(models.Model):
+"""
+class Product(models.Model):
     nombre = models.CharField(max_length=255)
     descripcion = models.TextField()
     precio = models.DecimalField(max_digits=10, decimal_places=2)
     stock = models.PositiveIntegerField()
-    categoria = models.ForeignKey(Categoria, on_delete=models.CASCADE)
-    proveedor = models.ForeignKey(Proveedor, on_delete=models.SET_NULL, null=True, blank=True)
+    categoria = models.ForeignKey(Category, on_delete=models.CASCADE)
+    #proveedor = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True)
 
 
     def __str__(self):
         return self.nombre
 
-class Pedido(models.Model):
+class Order(models.Model):
     ESTADOS = [
         ('pendiente', 'Pendiente'),
         ('procesando', 'Procesando'),
@@ -52,18 +52,18 @@ class Pedido(models.Model):
         ('cancelado', 'Cancelado'),
     ]
     
-    usuario = models.ForeignKey(User, on_delete=models.CASCADE)  # Relación con Usuario
+    usuario = models.ForeignKey(Client, on_delete=models.CASCADE)  # Relación con Client
     fecha = models.DateTimeField(auto_now_add=True)
     estado = models.CharField(max_length=20, choices=ESTADOS, default='pendiente')
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
-    def actualizar_total(self):
+    def total_update(self):
         self.total = sum(detalle.subtotal for detalle in self.detalles.all())
         self.save()
 
     def save(self, *args, **kwargs):
         if self.pk:  # Solo si el pedido ya existe
-            pedido_anterior = Pedido.objects.get(pk=self.pk)
+            pedido_anterior = Order.objects.get(pk=self.pk)
             if pedido_anterior.estado != 'cancelado' and self.estado == 'cancelado':
                 # Si el pedido se cancela, restituir stock de cada producto
                 for detalle in self.detalles.all():
@@ -75,9 +75,9 @@ class Pedido(models.Model):
     def __str__(self):
         return f"Pedido {self.id} - {self.usuario.username}"
 
-class DetallePedido(models.Model):
-    pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name="detalles")
-    producto = models.ForeignKey(Producto, on_delete=models.CASCADE)
+class OrderDetail(models.Model):
+    pedido = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="detalles")
+    producto = models.ForeignKey(Product, on_delete=models.CASCADE)
     cantidad = models.PositiveIntegerField()
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
 
@@ -94,8 +94,8 @@ class DetallePedido(models.Model):
     def __str__(self):
         return f"{self.cantidad} x {self.producto.nombre} (Pedido {self.pedido.id})"
 
-class Pago(models.Model):
-    pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name="pagos")  # <-- Relación 1:N
+class Pay(models.Model):
+    pedido = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="pagos")  # <-- Relación 1:N
     metodo = models.CharField(max_length=20, choices=[
         ('tarjeta', 'Tarjeta de Crédito/Débito'),
         ('paypal', 'PayPal'),
@@ -112,8 +112,8 @@ class Pago(models.Model):
 
 
 # Envío
-class Envio(models.Model):
-    pedido = models.OneToOneField(Pedido, on_delete=models.CASCADE)
+class Shipment(models.Model):
+    pedido = models.OneToOneField(Order, on_delete=models.CASCADE)
     direccion_envio = models.TextField()
     empresa_envio = models.CharField(max_length=100)
     numero_guia = models.CharField(max_length=50, unique=True, null=True, blank=True)

@@ -1,54 +1,54 @@
 from rest_framework import serializers
 from .models import *
 
-class ClienteSerializer(serializers.ModelSerializer):
+class ClientSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Cliente
+        model = Client
         fields = '__all__'
 
-class CategoriaSerializer(serializers.ModelSerializer):
+class CategorySerializer(serializers.ModelSerializer):
     class Meta:
-        model = Categoria
+        model = Category
+        fields = '__all__'
+"""
+class SupplierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Supplier
+        fields = '__all__'
+"""
+class ProductSerializer(serializers.ModelSerializer):
+    categoria = CategorySerializer()
+    #proveedor = SupplierSerializer()
+
+    class Meta:
+        model = Product
         fields = '__all__'
 
-class ProveedorSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Proveedor
-        fields = '__all__'
-
-class ProductoSerializer(serializers.ModelSerializer):
-    categoria = CategoriaSerializer()
-    proveedor = ProveedorSerializer()
-
-    class Meta:
-        model = Producto
-        fields = '__all__'
-
-class PedidoSerializer(serializers.ModelSerializer):
-    usuario = ClienteSerializer()
+class OrderSerializer(serializers.ModelSerializer):
+    usuario = ClientSerializer()
     detalles = serializers.SerializerMethodField()
 
     class Meta:
-        model = Pedido
+        model = Order
         fields = '__all__'
 
     def get_detalles(self, obj):
         detalles = obj.detalles.all()
-        return DetallePedidoSerializer(detalles, many=True).data
+        return OrderDetailSerializer(detalles, many=True).data
 
-class DetallePedidoSerializer(serializers.ModelSerializer):
-    producto = ProductoSerializer()
+class OrderDetailSerializer(serializers.ModelSerializer):
+    producto = ProductSerializer()
 
     class Meta:
-        model = DetallePedido
+        model = OrderDetail
         fields = '__all__'
 
-class PagoSerializer(serializers.ModelSerializer):
+class PaySerializer(serializers.ModelSerializer):
     class Meta:
-        model = Pago
+        model = Pay
         fields = '__all__'
 
-class EnvioSerializer(serializers.ModelSerializer):
+class ShipmentSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Envio
+        model = Shipment
         fields = '__all__'

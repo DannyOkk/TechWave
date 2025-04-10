@@ -5,34 +5,34 @@ from rest_framework import viewsets
 from .serializer import *
 from .models import *
 
-class ClienteViewSet(viewsets.ModelViewSet):
-    queryset = Cliente.objects.all()
-    serializer_class = ClienteSerializer
+class ClientViewSet(viewsets.ModelViewSet):
+    queryset = Client.objects.all()
+    serializer_class = ClientSerializer
 
-class CategoriaViewSet(viewsets.ModelViewSet):
-    queryset = Categoria.objects.all()
-    serializer_class = CategoriaSerializer 
+class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer 
+"""
+class SupplierViewSet(viewsets.ModelViewSet):
+    queryset = Supplier.objects.all()
+    serializer_class = SupplierSerializer
+"""
+class ProductViewSet(viewsets.ModelViewSet):
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
 
-class ProveedorViewSet(viewsets.ModelViewSet):
-    queryset = Proveedor.objects.all()
-    serializer_class = ProveedorSerializer
+class OrderViewSet(viewsets.ModelViewSet):
+    queryset = Order.objects.all()
+    serializer_class = OrderSerializer
 
-class ProductoViewSet(viewsets.ModelViewSet):
-    queryset = Producto.objects.all()
-    serializer_class = ProductoSerializer
+class OrderDetailViewSet(viewsets.ModelViewSet):
+    queryset = OrderDetail.objects.all()
+    serializer_class = OrderDetailSerializer 
 
-class PedidoViewSet(viewsets.ModelViewSet):
-    queryset = Pedido.objects.all()
-    serializer_class = PedidoSerializer
+class PayViewSet(viewsets.ModelViewSet):
+    queryset = Pay.objects.all()
+    serializer_class = PaySerializer  
 
-class DetallePedidoViewSet(viewsets.ModelViewSet):
-    queryset = DetallePedido.objects.all()
-    serializer_class = DetallePedidoSerializer 
-
-class PagoViewSet(viewsets.ModelViewSet):
-    queryset = Pago.objects.all()
-    serializer_class = PagoSerializer  
-
-class EnvioViewSet(viewsets.ModelViewSet):
-    queryset = Envio.objects.all()
-    serializer_class = EnvioSerializer
+class ShipmentViewSet(viewsets.ModelViewSet):
+    queryset = Shipment.objects.all()
+    serializer_class = ShipmentSerializer

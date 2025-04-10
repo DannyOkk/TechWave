@@ -3,14 +3,14 @@ from rest_framework import routers
 from Main import views
 
 router = routers.DefaultRouter()
-router.register(r'clientes', views.ClienteViewSet, basename='cliente')
-router.register(r'categorias', views.CategoriaViewSet, basename='categoria')
-router.register(r'proveedores', views.ProveedorViewSet, basename='proveedor')
-router.register(r'productos', views.ProductoViewSet, basename='producto')
-router.register(r'pedidos', views.PedidoViewSet, basename='pedido')
-router.register(r'detallepedidos', views.DetallePedidoViewSet, basename='detallepedido')
-router.register(r'pago', views.PagoViewSet, basename='pago')
-router.register(r'envios', views.EnvioViewSet, basename='envio')
+router.register(r'clients', views.ClientViewSet, basename='client')
+router.register(r'categories', views.CategoryViewSet, basename='category')
+#router.register(r'supplier', views.SupplierViewSet, basename='supplier')
+router.register(r'products', views.ProductViewSet, basename='product')
+router.register(r'orders', views.OrderViewSet, basename='order')
+router.register(r'orderdetail', views.OrderDetailViewSet, basename='orderdetail')
+router.register(r'pay', views.PayViewSet, basename='pay')
+router.register(r'shipment', views.ShipmentViewSet, basename='shipment')
 
 urlpatterns = [
     path('Main/model/', include(router.urls))
