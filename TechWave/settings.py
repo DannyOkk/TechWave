@@ -40,6 +40,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'drf_spectacular',
+    'account_admin',
+    'market'
 ]
 
 MIDDLEWARE = [
