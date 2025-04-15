@@ -1,6 +1,6 @@
 from django.urls import path, include 
 from rest_framework import routers
-from main import views
+from market import views
 
 router = routers.DefaultRouter()
 router.register(r'categories', views.CategoryViewSet, basename='category')

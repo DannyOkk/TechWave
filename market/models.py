@@ -1,15 +1,18 @@
 from django.db import models
-from accounts.models import Client
-# Create your models here.
+from account_admin.models import Clients
 
-# Categoría de Producto
+# Create your models here.
 class Category(models.Model):
-    nombre = models.CharField(max_length=100, unique=True)
+    nombre = models.CharField(max_length=110, unique=True)
     descripcion = models.TextField(blank=True)
 
     def __str__(self):
         return self.nombre
-
+    
+    class Meta:
+        verbose_name = "Category"  
+        verbose_name_plural = "Categories"  
+    
 """ Proveedor
 class Supplier(models.Model):
     nombre = models.CharField(max_length=255)
@@ -19,18 +22,26 @@ class Supplier(models.Model):
 
     def __str__(self):
         return self.nombre
+
+    class Meta:
+        verbose_name = "Proveedor"  
+        verbose_name_plural = "Proveedores"
 """
+
 class Product(models.Model):
-    nombre = models.CharField(max_length=255)
+    nombre = models.CharField(max_length=250)
     descripcion = models.TextField()
     precio = models.DecimalField(max_digits=10, decimal_places=2)
     stock = models.PositiveIntegerField()
     categoria = models.ForeignKey(Category, on_delete=models.CASCADE)
     #proveedor = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True)
 
-
     def __str__(self):
         return self.nombre
+    
+    class Meta:
+        verbose_name = "Product"  
+        verbose_name_plural = "Products"  
 
 class Order(models.Model):
     ESTADOS = [
@@ -41,7 +52,7 @@ class Order(models.Model):
         ('cancelado', 'Cancelado'),
     ]
     
-    usuario = models.ForeignKey(Client, on_delete=models.CASCADE)  # Relación con Client
+    usuario = models.ForeignKey(Clients, on_delete=models.CASCADE, null=True, blank=True)  # Relación con Client
     fecha = models.DateTimeField(auto_now_add=True)
     estado = models.CharField(max_length=20, choices=ESTADOS, default='pendiente')
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
@@ -63,6 +74,10 @@ class Order(models.Model):
 
     def __str__(self):
         return f"Pedido {self.id} - {self.usuario.username}"
+    
+    class Meta:
+        verbose_name = "Order"  
+        verbose_name_plural = "Orders"  
 
 class OrderDetail(models.Model):
     pedido = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="detalles")
@@ -82,6 +97,10 @@ class OrderDetail(models.Model):
 
     def __str__(self):
         return f"{self.cantidad} x {self.producto.nombre} (Pedido {self.pedido.id})"
+    
+    class Meta:
+        verbose_name = "Order Detail"  
+        verbose_name_plural = "Order Details"
 
 class Pay(models.Model):
     pedido = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="pagos")  # <-- Relación 1:N
@@ -98,6 +117,10 @@ class Pay(models.Model):
     
     def __str__(self):
         return f"Pago de {self.monto_pagado} - {self.metodo} ({self.estado})"
+    
+    class Meta:
+        verbose_name = "Pay"  
+        verbose_name_plural = "Pays"
 
 
 # Envío
@@ -117,3 +140,7 @@ class Shipment(models.Model):
 
     def __str__(self):
         return f"Envío de Pedido {self.pedido.id} - {self.empresa_envio} (Guía: {self.numero_guia if self.numero_guia else 'N/A'})"
+
+    class Meta:
+        verbose_name = "Shipment"  
+        verbose_name_plural = "Shipments"

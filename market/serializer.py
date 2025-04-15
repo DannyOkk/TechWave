@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from .models import *
-from ..accounts.models import Client
-from ..accounts.serializer import ClientSerializer
+from account_admin.serializer import ClientSerializer
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
