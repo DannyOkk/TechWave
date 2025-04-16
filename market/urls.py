@@ -12,5 +12,5 @@ router.register(r'pay', views.PayViewSet, basename='pay')
 router.register(r'shipment', views.ShipmentViewSet, basename='shipment')
 
 urlpatterns = [
-    path('main/model/', include(router.urls))
+    path('market/model/', include(router.urls))
 ]

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import *
-from account_admin.serializer import ClientSerializer
+from account_admin.serializer import UserSerializer
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -21,7 +21,7 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class OrderSerializer(serializers.ModelSerializer):
-    usuario = ClientSerializer()
+    usuario = UserSerializer()
     detalles = serializers.SerializerMethodField()
 
     class Meta:

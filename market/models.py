@@ -1,5 +1,5 @@
 from django.db import models
-from account_admin.models import Clients
+from account_admin.models import User
 
 # Create your models here.
 class Category(models.Model):
@@ -52,7 +52,7 @@ class Order(models.Model):
         ('cancelado', 'Cancelado'),
     ]
     
-    usuario = models.ForeignKey(Clients, on_delete=models.CASCADE, null=True, blank=True)  # Relación con Client
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)  # Relación con Client
     fecha = models.DateTimeField(auto_now_add=True)
     estado = models.CharField(max_length=20, choices=ESTADOS, default='pendiente')
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
