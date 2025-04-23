@@ -22,7 +22,7 @@ class UserViewSet(viewsets.ModelViewSet):
 class CreateUserView(APIView):
     def post(self, request):
         data = request.data
-        if User.is_authenticated:
+        if User.is_authenticated: #esto falla
             if User.role == 'admin':
                 data['role'] = request.data.get('operator', 'client')
             else:
