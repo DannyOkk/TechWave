@@ -20,9 +20,17 @@ class UserViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
 """
 class CreateUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         data = request.data
         user = request.user
+        if not user.is_authenticated or user.role not in ['admin', 'operator']:
+            return Response(
+                {"error": "No tienes permiso para crear usuarios."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         if user.is_authenticated:
             if user.role == 'admin':
                 data['role'] = data.get('role')
