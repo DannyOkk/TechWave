@@ -1,7 +1,12 @@
-🌐 TechWave - Módulo de Administración de Usuarios y Marketplace
-Este proyecto es un módulo del ecosistema TechWave, orientado a ofrecer funcionalidades de gestión de usuarios y de mercado digital (marketplace), implementadas con Django y Django REST Framework. Está pensado para ser mantenible, escalable y fácilmente integrable dentro de una arquitectura mayor.
+# 🌐 TechWave - Módulo de Administración de Usuarios y Marketplace
 
-🗂️ Estructura General
+Este proyecto es un módulo del ecosistema **TechWave**, orientado a ofrecer funcionalidades de **gestión de usuarios** y de **mercado digital (marketplace)**, implementadas con **Django** y **Django REST Framework**. Está pensado para ser mantenible, escalable y fácilmente integrable dentro de una arquitectura mayor.
+
+---
+
+## 🗂️ Estructura General
+
+```
 ├── TechWave/               # Proyecto Django (configuraciones globales)
 │   ├── settings.py         # Configuración general del proyecto
 │   ├── urls.py             # Enrutamiento global
@@ -25,40 +30,84 @@ Este proyecto es un módulo del ecosistema TechWave, orientado a ofrecer funcion
 │
 ├── manage.py               # Script de gestión Django
 └── .gitignore
+```
 
-⚙️ Stack Tecnológico
-Python 3.11+
-Django 4.x
-Django REST Framework
-SQLite (base de datos por defecto para desarrollo)
-Soporte para despliegue con WSGI/ASGI
+---
 
-▶️ Ejecución Local
-Clona el repositorio:
+## ⚙️ Stack Tecnológico
 
+- **Python 3.11+**
+- **Django 4.x**
+- **Django REST Framework**
+- **SQLite** (base de datos por defecto para desarrollo)
+- Soporte para despliegue con **WSGI/ASGI**
 
+---
+
+## ▶️ Ejecución Local
+
+### 1. Clona el repositorio
+
+```bash
 git clone <url>
 cd TechWave-Feature-UserAdmin
-Crea y activa el entorno virtual:
+```
+
+### 2. Crea y activa el entorno virtual
+
+```bash
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-Instala las dependencias:
+source venv/bin/activate  # En Windows: venv\Scripts\activate
+```
+
+### 3. Instala las dependencias
+
+```bash
 pip install -r requirements.txt
-Aplica migraciones:
+```
+
+### 4. Aplica migraciones
+
+```bash
 python manage.py migrate
-Inicia el servidor:
+```
+
+### 5. Inicia el servidor
+
+```bash
 python manage.py runserver
-🧪 Pruebas
+```
+
+---
+
+## 🧪 Pruebas
+
 Para ejecutar los tests:
+
+```bash
 python manage.py test
-Puedes añadir más tests en los archivos tests.py dentro de cada app.
+```
 
-📄 Documentación Adicional
-Revisa la carpeta Teoria/ para entender los fundamentos técnicos y decisiones arquitectónicas detrás de este módulo.
+Puedes añadir más tests en los archivos `tests.py` dentro de cada app.
 
-🤝 Contribución
-Haz un fork del repositorio.
-Crea una rama (git checkout -b feature/nombre).
-Realiza tus cambios y haz commits.
-Haz push a tu rama (git push origin feature/nombre).
-Abre un Pull Request.
+---
+
+## 📄 Documentación Adicional
+
+Revisa la carpeta `Teoria/` para entender los fundamentos técnicos y decisiones arquitectónicas detrás de este módulo.
+
+---
+
+## 🤝 Contribución
+
+1. Haz un fork del repositorio.
+2. Crea una rama:
+   ```bash
+   git checkout -b feature/nombre
+   ```
+3. Realiza tus cambios y haz commits.
+4. Haz push a tu rama:
+   ```bash
+   git push origin feature/nombre
+   ```
+5. Abre un Pull Request.
