@@ -8,7 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import IsAdminUser
 from rest_framework import viewsets
 # Create your views here.
-
+"""
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -18,13 +18,14 @@ class UserViewSet(viewsets.ModelViewSet):
         if self.request.method in ['POST', 'PATCH', 'DELETE']:
             self.permission_classes = [IsAdminUser]  # Solo administradores pueden crear, actualizar o eliminar usuarios
         return super().get_permissions()
-
+"""
 class CreateUserView(APIView):
     def post(self, request):
         data = request.data
-        if User.is_authenticated: #esto falla
-            if User.role == 'admin':
-                data['role'] = request.data.get('operator', 'client')
+        user = request.user
+        if user.is_authenticated:
+            if user.role == 'admin':
+                data['role'] = data.get('role')
             else:
                 data['role'] = 'client'
         serializer = UserSerializer(data=data)
