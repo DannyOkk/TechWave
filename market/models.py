@@ -12,21 +12,6 @@ class Category(models.Model):
     class Meta:
         verbose_name = "Category"  
         verbose_name_plural = "Categories"  
-    
-""" Proveedor
-class Supplier(models.Model):
-    nombre = models.CharField(max_length=255)
-    contacto = models.CharField(max_length=100)
-    telefono = models.CharField(max_length=20)
-    direccion = models.TextField()
-
-    def __str__(self):
-        return self.nombre
-
-    class Meta:
-        verbose_name = "Proveedor"  
-        verbose_name_plural = "Proveedores"
-"""
 
 class Product(models.Model):
     nombre = models.CharField(max_length=250)
@@ -122,8 +107,6 @@ class Pay(models.Model):
         verbose_name = "Pay"  
         verbose_name_plural = "Pays"
 
-
-# Envío
 class Shipment(models.Model):
     pedido = models.OneToOneField(Order, on_delete=models.CASCADE)
     direccion_envio = models.TextField()
@@ -144,3 +127,62 @@ class Shipment(models.Model):
     class Meta:
         verbose_name = "Shipment"  
         verbose_name_plural = "Shipments"
+    
+class Cart(models.Model):
+    """Modelo para representar el carrito de compras de un usuario"""
+    usuario = models.OneToOneField(User, on_delete=models.CASCADE)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Carrito de {self.usuario.username}"
+    
+    def total(self):
+        """Calcula el total del carrito"""
+        return sum(item.subtotal() for item in self.items.all())
+    
+    def cantidad_items(self):
+        """Obtiene la cantidad total de items en el carrito"""
+        return sum(item.cantidad for item in self.items.all())
+    
+    def limpiar(self):
+        """Elimina todos los items del carrito"""
+        self.items.all().delete()
+    
+    class Meta:
+        verbose_name = "Carrito"
+        verbose_name_plural = "Carritos"
+
+class CartItem(models.Model):
+    """Modelo para representar un item en el carrito"""
+    carrito = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
+    producto = models.ForeignKey(Product, on_delete=models.CASCADE)
+    cantidad = models.PositiveIntegerField(default=1)
+    fecha_agregado = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.cantidad} x {self.producto.nombre}"
+    
+    def subtotal(self):
+        """Calcula el subtotal del item"""
+        return self.producto.precio * self.cantidad
+    
+    class Meta:
+        verbose_name = "Item de Carrito"
+        verbose_name_plural = "Items de Carrito"
+        unique_together = ('carrito', 'producto')  # Un producto solo puede estar una vez en el carrito
+
+""" Proveedor
+class Supplier(models.Model):
+    nombre = models.CharField(max_length=255)
+    contacto = models.CharField(max_length=100)
+    telefono = models.CharField(max_length=20)
+    direccion = models.TextField()
+
+    def __str__(self):
+        return self.nombre
+
+    class Meta:
+        verbose_name = "Proveedor"  
+        verbose_name_plural = "Proveedores"
+"""

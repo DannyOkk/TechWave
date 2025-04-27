@@ -5,8 +5,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import authenticate, login, logout
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.permissions import IsAdminUser
-from rest_framework import viewsets
+#from rest_framework import viewsets
+from TechWave.permissions import *
 # Create your views here.
 """
 class UserViewSet(viewsets.ModelViewSet):
@@ -45,7 +45,7 @@ class CreateUserView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class ChangeRoleView(APIView):
-    permission_classes = [IsAdminUser]  # Solo administradores pueden cambiar roles
+    permission_classes = [IsAdmin]  # Solo administradores pueden cambiar roles
 
     def patch(self, request, user_id):
         try:
