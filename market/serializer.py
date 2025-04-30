@@ -40,15 +40,26 @@ class OrderSerializer(serializers.ModelSerializer):
         queryset=User.objects.all(),
         slug_field='username',  # Usar username en lugar de id
         required=True,
-        write_only=True
+        write_only=True,
+        help_text="Nombre de usuario del cliente que realiza el pedido. Debe existir en la base de datos."
     )
     
     detalles = serializers.SerializerMethodField()
+    # Agregar campo para recibir detalles al crear la orden
+    detalles_input = serializers.ListField(
+        child=serializers.DictField(),
+        write_only=True,
+        required=False,
+        help_text="Lista de productos a incluir en el pedido"
+    )
 
     class Meta:
         model = Order
-        fields = ['id', 'usuario', 'usuario_detalle', 'fecha', 'estado', 'total', 'detalles']
-
+        fields = ['id', 'usuario', 'usuario_detalle', 'fecha', 'estado', 'total', 'detalles', 'detalles_input']
+        read_only_fields = ['id', 'fecha', 'total']
+        extra_kwargs = {
+            'estado': {'default': 'pendiente', 'help_text': "Estado del pedido (default: pendiente)"}
+        }
     def get_detalles(self, obj):
         try:
             # Intenta usar el related_name personalizado si existe
@@ -60,11 +71,39 @@ class OrderSerializer(serializers.ModelSerializer):
         return OrderDetailSerializer(detalles, many=True).data
     
     def to_representation(self, instance):
-        # Cuando obtenemos datos, muestra el usuario completo pero no el ID
         representation = super().to_representation(instance)
-        # Quitar usuario_id ya que tenemos la información completa en usuario_detalle
-        if 'usuario' in representation:
+        
+        # Verificar si es una solicitud para edición
+        request = self.context.get('request')
+        if request and request.method in ['PUT', 'PATCH']:
+            # Formato simplificado para edición
+            
+            # Simplificar usuario_detalle a solo username
+            if 'usuario_detalle' in representation:
+                username = instance.usuario.username
+                representation['usuario_detalle'] = {'username': username}
+            
+            # Eliminar campos que no se necesitan para edición
+            if 'fecha' in representation:
+                del representation['fecha']
+            
+            if 'total' in representation:
+                del representation['total']
+                
+            # Simplificar detalles para edición
+            if 'detalles' in representation:
+                simplified_details = []
+                for detalle in representation['detalles']:
+                    simplified_details.append({
+                        'id': detalle['id'],
+                        'producto': detalle['producto_detalle']['id'],
+                        'cantidad': detalle['cantidad']
+                    })
+                representation['detalles'] = simplified_details
+        elif 'usuario' in representation:
+            # Comportamiento normal para GET y otras solicitudes
             del representation['usuario']
+        
         return representation
 
     def create(self, validated_data):
@@ -203,8 +242,8 @@ class ShipmentSerializer(serializers.ModelSerializer):
 
 class CartItemSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
-    precio_unitario = serializers.DecimalField(source='producto.precio', max_digits=10, decimal_places=2, read_only=True)
-    subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    subtotal = serializers.DecimalField(source='producto.precio', max_digits=10, decimal_places=2, read_only=True)
+    subbtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     
     class Meta:
         model = CartItem

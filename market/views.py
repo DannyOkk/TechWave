@@ -137,9 +137,141 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Order.objects.filter(usuario=user)
     
     def perform_create(self, serializer):
-        """Asigna automáticamente el usuario actual al crear la orden"""
-        serializer.save(usuario=self.request.user)
+        """Valida que el usuario solo pueda crear pagos para sus órdenes"""
+        pedido_id = self.request.data.get('pedido')
+        user = self.request.user
         
+        try:
+            pedido = Order.objects.get(id=pedido_id)
+            
+            # Verificar propiedad del pedido para usuarios normales
+            if user.role not in ['admin', 'operator'] and pedido.usuario != user:
+                raise serializers.ValidationError("No puedes crear pagos para pedidos que no te pertenecen")
+            
+            # Verificar estado del pedido
+            if pedido.estado not in ['pendiente', 'procesando']:
+                raise serializers.ValidationError(f"No se puede pagar un pedido en estado '{pedido.estado}'")
+            
+            # Usar automáticamente el total del pedido como monto pagado
+            monto_pagado = pedido.total
+                    
+            # Guardar con estado inicial pendiente y monto correcto
+            serializer.save(estado='pendiente', monto_pagado=monto_pagado)
+            
+        except Order.DoesNotExist:
+            raise serializers.ValidationError("Pedido no encontrado")
+        
+    def perform_update(self, serializer):
+        """Maneja la actualización de una orden y sus detalles"""
+        instance = self.get_object()
+        
+        # Verificar si se pueden hacer cambios según el estado
+        if instance.estado in ['entregado', 'cancelado']:
+            raise serializers.ValidationError(
+                f"No se puede modificar un pedido en estado '{instance.estado}'"
+            )
+        
+        # Actualizar los campos básicos de la orden
+        updated_instance = serializer.save()
+        
+        # Procesar detalles si se proporcionan
+        detalles_data = self.request.data.get('detalles', [])
+        if detalles_data:
+            # Manejar cada detalle de la orden
+            self._process_order_details(updated_instance, detalles_data)
+            
+        # Recalcular total
+        if hasattr(updated_instance, 'total_update'):
+            updated_instance.total_update()
+    
+    def _process_order_details(self, order, detalles_data):
+        """Procesa los detalles de una orden durante la actualización"""
+        for detalle_data in detalles_data:
+            producto_id = detalle_data.get('producto')
+            cantidad = detalle_data.get('cantidad', 1)
+            detalle_id = detalle_data.get('id', None)
+            
+            if not producto_id:
+                continue
+                
+            try:
+                producto = Product.objects.get(id=producto_id)
+                
+                if detalle_id:
+                    # Actualizar detalle existente
+                    try:
+                        detalle = OrderDetail.objects.get(id=detalle_id, pedido=order)
+                        
+                        # Si la cantidad cambia, ajustar el stock
+                        if detalle.cantidad != cantidad:
+                            # Devolver el stock anterior
+                            producto.stock += detalle.cantidad
+                            # Restar el nuevo stock
+                            if producto.stock < cantidad:
+                                raise serializers.ValidationError(
+                                    f"Stock insuficiente para {producto.nombre}"
+                                )
+                            producto.stock -= cantidad
+                            producto.save()
+                        
+                        detalle.cantidad = cantidad
+                        detalle.save()
+                    except OrderDetail.DoesNotExist:
+                        raise serializers.ValidationError(
+                            f"Detalle con id {detalle_id} no pertenece a esta orden"
+                        )
+                else:
+                    # Crear nuevo detalle
+                    if producto.stock < cantidad:
+                        raise serializers.ValidationError(
+                            f"Stock insuficiente para {producto.nombre}"
+                        )
+                        
+                    OrderDetail.objects.create(
+                        pedido=order,
+                        producto=producto,
+                        cantidad=cantidad
+                    )
+            except Product.DoesNotExist:
+                # Ignorar productos que no existen
+                pass
+    
+    @action(detail=True, methods=['post'], url_path='remove-detail/(?P<detail_id>[^/.]+)')
+    def remove_detail(self, request, pk=None, detail_id=None):
+        """Elimina un detalle específico de la orden"""
+        order = self.get_object()
+        
+        # Verificar estado del pedido
+        if order.estado in ['entregado', 'cancelado']:
+            return Response(
+                {'error': f'No se puede modificar un pedido en estado {order.estado}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            detail = OrderDetail.objects.get(id=detail_id, pedido=order)
+            
+            # Devolver el stock
+            producto = detail.producto
+            producto.stock += detail.cantidad
+            producto.save()
+            
+            # Eliminar el detalle
+            detail.delete()
+            
+            # Actualizar el total
+            order.total_update()
+            
+            return Response(
+                {'status': 'Detalle eliminado', 'total_actualizado': float(order.total)}, 
+                status=status.HTTP_200_OK
+            )
+        except OrderDetail.DoesNotExist:
+            return Response(
+                {'error': 'El detalle no existe o no pertenece a esta orden'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
         """Endpoint para cancelar una orden"""
@@ -216,8 +348,7 @@ class CartViewSet(viewsets.ModelViewSet):
             OrderDetail.objects.create(
                 pedido=pedido,
                 producto=item.producto,
-                cantidad=item.cantidad,
-                precio_unitario=item.producto.precio
+                cantidad=item.cantidad
             )
             
             # Actualizar stock del producto
@@ -232,29 +363,6 @@ class CartViewSet(viewsets.ModelViewSet):
             'pedido_id': pedido.id,
             'total': float(pedido.total)
         }, status=status.HTTP_201_CREATED)
-
-class OrderDetailViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet para detalles de órdenes.
-    - Admin y operadores: acceso completo a todos los detalles
-    - Clientes: solo pueden ver detalles de sus propias órdenes
-    """
-    queryset = OrderDetail.objects.all()
-    serializer_class = OrderDetailSerializer 
-    permission_classes = [OrderDetailPermission]
-    
-    def get_queryset(self):
-        """Filtra para que clientes vean solo los detalles de sus órdenes"""
-        user = self.request.user
-        if user.role in ['admin', 'operator']:
-            return OrderDetail.objects.all()
-        return OrderDetail.objects.filter(pedido__usuario=user)
-    
-    def perform_create(self, serializer):
-        """Guarda el detalle y actualiza el total del pedido"""
-        detail = serializer.save()  # Esto invoca el save() personalizado que actualiza stock
-        # Actualiza el total del pedido
-        detail.pedido.total_update()
 
 class PayViewSet(viewsets.ModelViewSet):
     """
@@ -277,7 +385,7 @@ class PayViewSet(viewsets.ModelViewSet):
         """Valida que el usuario solo pueda crear pagos para sus órdenes"""
         pedido_id = self.request.data.get('pedido')
         user = self.request.user
-        monto = self.request.data.get('monto')
+        monto = self.request.data.get('monto_pagado')  # Nombre correcto del campo
         
         try:
             pedido = Order.objects.get(id=pedido_id)
@@ -290,11 +398,15 @@ class PayViewSet(viewsets.ModelViewSet):
             if pedido.estado not in ['pendiente', 'procesando']:
                 raise serializers.ValidationError(f"No se puede pagar un pedido en estado '{pedido.estado}'")
             
-            # Verificar que el monto sea correcto
-            if float(monto) != float(pedido.total):
-                raise serializers.ValidationError(
-                    f"El monto del pago ({monto}) debe ser igual al total del pedido ({pedido.total})"
-                )
+            # # Verificar que se proporcionó el monto
+            # if monto is None:
+            #     raise serializers.ValidationError("El campo 'monto_pagado' es obligatorio")
+                
+            # # Verificar que el monto sea correcto
+            # if float(monto) != float(pedido.total):
+            #     raise serializers.ValidationError(
+            #         f"El monto del pago ({monto}) debe ser igual al total del pedido ({pedido.total})"
+            #     )
                 
             # Guardar con estado inicial pendiente
             serializer.save(estado='pendiente')
