@@ -159,7 +159,12 @@ class PaySerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Pay
-        fields = '__all__'
+        fields = ['id', 'pedido', 'metodo', 'estado', 'pedido_detalle']
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'metodo': {'required': True},
+            'estado': {'default': 'pendiente'}
+        }
         
     def get_pedido_detalle(self, obj):
         """Muestra información resumida del pedido asociado al pago"""
@@ -169,6 +174,13 @@ class PaySerializer(serializers.ModelSerializer):
             'estado': obj.pedido.estado,
             'fecha': obj.pedido.fecha
         }
+    
+    def create(self, validated_data):
+        # El monto_pagado se calcula automáticamente basado en el pedido
+        pedido = validated_data.get('pedido')
+        if pedido:
+            validated_data['monto_pagado'] = pedido.total
+        return super().create(validated_data)
 
 class ShipmentSerializer(serializers.ModelSerializer):
     # Para mostrar detalles del pedido en respuestas GET
@@ -221,14 +233,6 @@ class ShipmentSerializer(serializers.ModelSerializer):
                     f"El pedido debe estar pagado o en procesamiento."
                 )
         
-        # Validar la fecha estimada de entrega (si se proporciona)
-        if 'fecha_entrega_estimada' in data and data['fecha_entrega_estimada']:
-            from django.utils import timezone
-            if data['fecha_entrega_estimada'] < timezone.now():
-                raise serializers.ValidationError(
-                    "La fecha estimada de entrega no puede ser en el pasado"
-                )
-        
         return data
     
     def create(self, validated_data):
@@ -242,18 +246,16 @@ class ShipmentSerializer(serializers.ModelSerializer):
 
 class CartItemSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
-    subtotal = serializers.DecimalField(source='producto.precio', max_digits=10, decimal_places=2, read_only=True)
-    subbtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    precio_unitario = serializers.DecimalField(source='producto.precio', max_digits=10, decimal_places=2, read_only=True)
+    subtotal = serializers.SerializerMethodField()
     
     class Meta:
         model = CartItem
         fields = ['id', 'producto', 'producto_nombre', 'cantidad', 'precio_unitario', 'subtotal']
         read_only_fields = ['id', 'producto_nombre', 'precio_unitario', 'subtotal']
     
-    def to_representation(self, instance):
-        representation = super().to_representation(instance)
-        representation['subtotal'] = float(instance.subtotal())
-        return representation
+    def get_subtotal(self, obj):
+        return float(obj.subtotal())
 
 class CartSerializer(serializers.ModelSerializer):
     items = CartItemSerializer(many=True, read_only=True)
