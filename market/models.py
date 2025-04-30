@@ -32,8 +32,7 @@ class Order(models.Model):
     ESTADOS = [
         ('pendiente', 'Pendiente'),
         ('procesando', 'Procesando'),
-        ('enviado', 'Enviado'),
-        ('entregado', 'Entregado'),
+        ('pagado', 'Pagado'),
         ('cancelado', 'Cancelado'),
     ]
     
@@ -113,7 +112,7 @@ class Shipment(models.Model):
     empresa_envio = models.CharField(max_length=100)
     numero_guia = models.CharField(max_length=50, unique=True, null=True, blank=True)
     fecha_envio = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    fecha_entrega_estimada = models.DateTimeField(null=True, blank=True)
+    fecha_entrega_estimada = models.CharField(max_length=100, null=True, blank=True)
     estado = models.CharField(max_length=50, choices=[
         ('pendiente', 'Pendiente'),
         ('preparando', 'Preparando'),

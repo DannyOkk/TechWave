@@ -140,6 +140,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         """Valida que el usuario solo pueda crear pagos para sus órdenes"""
         pedido_id = self.request.data.get('pedido')
         user = self.request.user
+        estado = self.request.data.get('estado', 'pendiente')  # Default estado is 'pendiente'
         
         try:
             pedido = Order.objects.get(id=pedido_id)
@@ -155,8 +156,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             # Usar automáticamente el total del pedido como monto pagado
             monto_pagado = pedido.total
                     
-            # Guardar con estado inicial pendiente y monto correcto
-            serializer.save(estado='pendiente', monto_pagado=monto_pagado)
+            # Guardar con el estado proporcionado (o pendiente por defecto) y monto correcto
+            serializer.save(monto_pagado=monto_pagado, estado=estado)
             
         except Order.DoesNotExist:
             raise serializers.ValidationError("Pedido no encontrado")
@@ -385,7 +386,7 @@ class PayViewSet(viewsets.ModelViewSet):
         """Valida que el usuario solo pueda crear pagos para sus órdenes"""
         pedido_id = self.request.data.get('pedido')
         user = self.request.user
-        monto = self.request.data.get('monto_pagado')  # Nombre correcto del campo
+        estado = self.request.data.get('estado', 'pendiente')  # Default estado is 'pendiente'
         
         try:
             pedido = Order.objects.get(id=pedido_id)
@@ -398,18 +399,11 @@ class PayViewSet(viewsets.ModelViewSet):
             if pedido.estado not in ['pendiente', 'procesando']:
                 raise serializers.ValidationError(f"No se puede pagar un pedido en estado '{pedido.estado}'")
             
-            # # Verificar que se proporcionó el monto
-            # if monto is None:
-            #     raise serializers.ValidationError("El campo 'monto_pagado' es obligatorio")
-                
-            # # Verificar que el monto sea correcto
-            # if float(monto) != float(pedido.total):
-            #     raise serializers.ValidationError(
-            #         f"El monto del pago ({monto}) debe ser igual al total del pedido ({pedido.total})"
-            #     )
-                
-            # Guardar con estado inicial pendiente
-            serializer.save(estado='pendiente')
+            # Usar automáticamente el total del pedido como monto pagado
+            monto_pagado = pedido.total
+                    
+            # Guardar con el estado proporcionado (o pendiente por defecto) y monto correcto
+            serializer.save(monto_pagado=monto_pagado, estado=estado)
             
         except Order.DoesNotExist:
             raise serializers.ValidationError("Pedido no encontrado")
