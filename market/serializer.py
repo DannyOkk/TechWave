@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import *
 from account_admin.serializer import UserSerializer
+from rest_framework.exceptions import ValidationError
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -61,14 +62,22 @@ class OrderSerializer(serializers.ModelSerializer):
             'estado': {'default': 'pendiente', 'help_text': "Estado del pedido (default: pendiente)"}
         }
     def get_detalles(self, obj):
+        """Obtiene los detalles de una orden de forma robusta"""
         try:
-            # Intenta usar el related_name personalizado si existe
-            detalles = obj.detalles.all()
-        except AttributeError:
-            # Si falla, usa el nombre por defecto de Django
-            detalles = obj.orderdetail_set.all()
-        
-        return OrderDetailSerializer(detalles, many=True).data
+            # Intentar obtener detalles usando cualquier método disponible
+            if hasattr(obj, 'detalles'):
+                detalles_queryset = obj.detalles.all()
+            elif hasattr(obj, 'orderdetail_set'):
+                detalles_queryset = obj.orderdetail_set.all()
+            else:
+                return []  # No hay detalles disponibles
+            
+            # Serializar los detalles
+            serializer = OrderDetailSerializer(detalles_queryset, many=True)
+            return serializer.data
+        except Exception:
+            # Capturar cualquier error y devolver lista vacía
+            return []
     
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -100,10 +109,6 @@ class OrderSerializer(serializers.ModelSerializer):
                         'cantidad': detalle['cantidad']
                     })
                 representation['detalles'] = simplified_details
-        elif 'usuario' in representation:
-            # Comportamiento normal para GET y otras solicitudes
-            del representation['usuario']
-        
         return representation
 
     def create(self, validated_data):
@@ -160,7 +165,7 @@ class PaySerializer(serializers.ModelSerializer):
     class Meta:
         model = Pay
         fields = ['id', 'pedido', 'metodo', 'estado', 'pedido_detalle']
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'monto_pagado']
         extra_kwargs = {
             'metodo': {'required': True},
             'estado': {'default': 'pendiente'}
@@ -227,21 +232,19 @@ class ShipmentSerializer(serializers.ModelSerializer):
         # Verificar que el pedido esté en un estado válido para crear un envío
         if 'pedido' in data:
             pedido = data['pedido']
-            if pedido.estado not in ['pagado', 'procesando', 'enviado', 'entregado']:
+            if pedido.estado not in ['pendiente', 'preparando', 'en camino', 'entregado']:
                 raise serializers.ValidationError(
                     f"No se puede crear un envío para un pedido en estado '{pedido.estado}'. "
-                    f"El pedido debe estar pagado o en procesamiento."
+                    f"El pedido debe estar en un estado válido para el envío."
                 )
         
         return data
     
     def create(self, validated_data):
-        # Si el pedido está en estado pagado, cambiarlo a procesando al crear el envío
         pedido = validated_data['pedido']
-        if pedido.estado == 'pagado':
+        if pedido.estado == 'pendiente':
             pedido.estado = 'procesando'
             pedido.save()
-        
         return super().create(validated_data)
 
 class CartItemSerializer(serializers.ModelSerializer):
