@@ -10,3 +10,5 @@ Accounts/migrations/__pycache__
 Accounts/migrations/__pycache__/
 **/__pycache__
 **/__pycache__/
+**.vscode/
+.vscode/
