@@ -57,7 +57,8 @@ class Order(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Pedido {self.id} - {self.usuario.username}"
+        username = self.usuario.username if self.usuario else "None"
+        return f"Pedido {self.id} - {username}"
     
     class Meta:
         verbose_name = "Order"  
@@ -70,12 +71,6 @@ class OrderDetail(models.Model):
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
 
     def save(self, *args, **kwargs):
-        if not self.pk:  # Solo descontar si es un nuevo detalle
-            if self.producto.stock < self.cantidad:
-                raise ValueError("No hay suficiente stock disponible")
-            self.producto.stock -= self.cantidad
-            self.producto.save()
-
         self.subtotal = self.producto.precio * self.cantidad
         super().save(*args, **kwargs)
 

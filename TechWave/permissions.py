@@ -134,6 +134,64 @@ class ProductPermission(permissions.BasePermission):
             
         # Modificaciones solo para admin y operadores
         return request.user.role in ['admin', 'operator']
+    
+class OrderPermission(permissions.BasePermission):
+    """
+    Permisos para órdenes:
+    - Admin/operadores: acceso completo a todas las órdenes
+    - Clientes: acceso solo a sus propias órdenes, crear nuevas
+    """
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+            
+        # Admin/operadores tienen acceso completo
+        if request.user.role in ['admin', 'operator']:
+            return True
+            
+        # Clientes solo pueden crear órdenes y usar métodos seguros
+        if request.user.role == 'client':
+            if request.method == 'POST' or request.method in permissions.SAFE_METHODS:
+                return True
+                
+        return False
+        
+    def has_object_permission(self, request, view, obj):
+        # Admin/operadores tienen acceso completo a nivel de objeto
+        if request.user.role in ['admin', 'operator']:
+            return True
+            
+        # Clientes solo pueden acceder a sus propias órdenes
+        return obj.usuario == request.user
+    
+class AddToCartPermission(permissions.BasePermission):
+    """
+    Permiso específico para la acción add_to_cart.
+    Permite a clientes añadir productos a sus carritos.
+    """
+    def has_permission(self, request, view):
+        # Verificar que el usuario esté autenticado
+        if not request.user or not request.user.is_authenticated:
+            return False
+            
+        # Todos los usuarios autenticados pueden añadir productos al carrito
+        return True
+    
+class CancelOrderPermission(permissions.BasePermission):
+    """
+    Permite a los clientes cancelar sus propias órdenes.
+    Admin y operadores pueden cancelar cualquier orden.
+    """
+    def has_permission(self, request, view):
+        # Verificar que el usuario esté autenticado
+        return request.user and request.user.is_authenticated
+        
+    def has_object_permission(self, request, view, obj):
+        # Admin y operadores pueden cancelar cualquier orden
+        if request.user.role in ['admin', 'operator']:
+            return True
+        # Cliente solo puede cancelar sus propias órdenes
+        return obj.usuario == request.user
 
 class OrderDetailPermission(permissions.BasePermission):
     """
@@ -167,18 +225,19 @@ class OrderDetailPermission(permissions.BasePermission):
 
 class PaymentPermission(permissions.BasePermission):
     """
-    Admin y operadores tienen acceso completo a pagos.
-    Clientes pueden crear pagos y ver sus propios pagos.
+    Permisos para pagos:
+    - Admin/operadores: acceso completo a todos los pagos
+    - Clientes: acceso solo a pagos de sus propias órdenes
     """
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
+        if not request.user.is_authenticated:
             return False
             
-        # Admin y operadores tienen acceso completo
+        # Admin/operadores tienen acceso completo
         if request.user.role in ['admin', 'operator']:
             return True
             
-        # Clientes pueden crear pagos y ver los suyos
+        # Clientes solo pueden crear pagos y usar métodos seguros
         if request.user.role == 'client':
             if request.method == 'POST' or request.method in permissions.SAFE_METHODS:
                 return True
@@ -186,15 +245,12 @@ class PaymentPermission(permissions.BasePermission):
         return False
         
     def has_object_permission(self, request, view, obj):
-        # Admin y operadores pueden acceder a todos los pagos
+        # Admin/operadores tienen acceso completo a nivel de objeto
         if request.user.role in ['admin', 'operator']:
             return True
             
-        # Clientes solo pueden ver sus propios pagos
-        if hasattr(obj, 'order') and hasattr(obj.order, 'user'):
-            return obj.order.user == request.user
-        
-        return False
+        # Clientes solo pueden acceder a pagos de sus propias órdenes
+        return obj.pedido.usuario == request.user
 
 class ShipmentPermission(permissions.BasePermission):
     """
@@ -225,6 +281,22 @@ class ShipmentPermission(permissions.BasePermission):
             return obj.order.user == request.user
         
         return False
+
+class TrackingPermission(permissions.BasePermission):
+    """
+    Permiso que permite a cualquier usuario autenticado ver información
+    de tracking, pero solo de sus propios envíos.
+    """
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated
+        
+    def has_object_permission(self, request, view, obj):
+        # Admin y operadores pueden ver tracking de cualquier envío
+        if request.user.role in ['admin', 'operator']:
+            return True
+        
+        # Clientes solo pueden ver tracking de sus propios envíos
+        return obj.pedido.usuario == request.user
 
 class UserAccountPermission(permissions.BasePermission):
     """

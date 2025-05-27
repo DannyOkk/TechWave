@@ -20,11 +20,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [CategoryPermission]
     
     def get_queryset(self):
-        """Permite filtrar categorías por nombre"""
+        """Filtrado para categorías"""
         queryset = Category.objects.all()
+        
+        # Filtrado por nombre
         nombre = self.request.query_params.get('nombre', None)
-        if nombre is not None:
+        if nombre:
             queryset = queryset.filter(nombre__icontains=nombre)
+            
         return queryset
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -56,7 +59,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             
         return queryset
         
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[AddToCartPermission])
     def add_to_cart(self, request, pk=None):
         """Endpoint personalizado para agregar producto al carrito"""
         # 1. Obtener el producto
@@ -127,7 +130,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     """
     queryset = Order.objects.all()
     serializer_class = OrderSerializer
-    permission_classes = [ClientOrderPermission]
+    permission_classes = [OrderPermission]
     
     def get_queryset(self):
         """Filtra para que clientes vean solo sus órdenes"""
@@ -137,30 +140,16 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Order.objects.filter(usuario=user)
     
     def perform_create(self, serializer):
-        """Valida que el usuario solo pueda crear pagos para sus órdenes"""
-        pedido_id = self.request.data.get('pedido')
-        user = self.request.user
-        estado = self.request.data.get('estado', 'pendiente')  # Default estado is 'pendiente'
+        """
+        Crea una nueva orden asociada al usuario actual.
+        Procesa los detalles de la orden si se proporcionan.
+        """
+        # Asignar el usuario actual como dueño de la orden
+        orden = serializer.save(usuario=self.request.user)
+        # Recalcular el total de la orden en base a los detalles
+        orden.total_update()
         
-        try:
-            pedido = Order.objects.get(id=pedido_id)
-            
-            # Verificar propiedad del pedido para usuarios normales
-            if user.role not in ['admin', 'operator'] and pedido.usuario != user:
-                raise serializers.ValidationError("No puedes crear pagos para pedidos que no te pertenecen")
-            
-            # Verificar estado del pedido
-            if pedido.estado not in ['pendiente', 'procesando']:
-                raise serializers.ValidationError(f"No se puede pagar un pedido en estado '{pedido.estado}'")
-            
-            # Usar automáticamente el total del pedido como monto pagado
-            monto_pagado = pedido.total
-                    
-            # Guardar con el estado proporcionado (o pendiente por defecto) y monto correcto
-            serializer.save(monto_pagado=monto_pagado, estado=estado)
-            
-        except Order.DoesNotExist:
-            raise serializers.ValidationError("Pedido no encontrado")
+        return orden
         
     def perform_update(self, serializer):
         """Maneja la actualización de una orden y sus detalles"""
@@ -273,16 +262,29 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
     
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[CancelOrderPermission])
     def cancel(self, request, pk=None):
         """Endpoint para cancelar una orden"""
         order = self.get_object()
-        if order.estado == 'pendiente':
-            order.estado = 'cancelado'
-            order.save()  # Esto invocará el método save() personalizado que restaura el stock
-            return Response({'status': 'pedido cancelado'}, status=status.HTTP_200_OK)
-        return Response({'error': 'No se puede cancelar el pedido en su estado actual'}, 
-                         status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verificación de estado
+        if order.estado == 'cancelado':
+            return Response(
+                {"error": "La orden ya está cancelada"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        if order.estado not in ['pendiente', 'procesando']:
+            return Response(
+                {"error": f"No se puede cancelar una orden en estado '{order.estado}'"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Cambiar estado
+        order.estado = 'cancelado'
+        order.save()
+        
+        return Response({"message": "Orden cancelada correctamente"})
     
     @action(detail=True, methods=['post'])
     def update_total(self, request, pk=None):
@@ -329,7 +331,7 @@ class CartViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Verificar stock disponible para todos los productos
+        # Verificar stock disponible para todos los productos (primer chequeo)
         for item in carrito.items.all():
             if item.cantidad > item.producto.stock:
                 return Response(
@@ -344,15 +346,29 @@ class CartViewSet(viewsets.ModelViewSet):
             total=carrito.total()
         )
         
-        # Transferir items del carrito al pedido
+        # Transferir items del carrito al pedido (segundo chequeo y reducción de stock)
         for item in carrito.items.all():
+            # Refrescar el producto desde la base de datos para obtener stock actualizado
+            item.producto.refresh_from_db()
+            
+            # Verificar stock nuevamente (segundo chequeo)
+            if item.cantidad > item.producto.stock:
+                # Si falla, eliminar el pedido creado y retornar error
+                pedido.delete()
+                return Response(
+                    {'error': f'Stock insuficiente para {item.producto.nombre}. Solo hay {item.producto.stock} unidades disponibles'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Crear el detalle del pedido
             OrderDetail.objects.create(
                 pedido=pedido,
                 producto=item.producto,
-                cantidad=item.cantidad
+                cantidad=item.cantidad,
+                subtotal=item.cantidad * item.producto.precio
             )
             
-            # Actualizar stock del producto
+            # Reducir el stock
             item.producto.stock -= item.cantidad
             item.producto.save()
         
@@ -376,20 +392,29 @@ class PayViewSet(viewsets.ModelViewSet):
     permission_classes = [PaymentPermission]
     
     def get_queryset(self):
-        """Filtra para que clientes vean solo pagos de sus órdenes"""
         user = self.request.user
-        if user.role in ['admin', 'operator']:
-            return Pay.objects.all()
-        return Pay.objects.filter(pedido__usuario=user)
+        queryset = Pay.objects.all()
+        
+        # Filtros adicionales
+        estado = self.request.query_params.get('estado', None)
+        if estado:
+            queryset = queryset.filter(estado=estado)
+        
+        # AÑADIR: Filtrado por usuario para clientes en operación LIST
+        if user.role not in ['admin', 'operator'] and self.action == 'list':
+            queryset = queryset.filter(pedido__usuario=user)
+            
+        return queryset
     
     def perform_create(self, serializer):
         """Valida que el usuario solo pueda crear pagos para sus órdenes"""
         pedido_id = self.request.data.get('pedido')
         user = self.request.user
-        estado = self.request.data.get('estado', 'pendiente')  # Default estado is 'pendiente'
+        estado = self.request.data.get('estado', 'pendiente')
         
         try:
-            pedido = Order.objects.get(id=pedido_id)
+            # Cambiar esta línea para hacer refresh explícito
+            pedido = Order.objects.select_for_update().get(id=pedido_id)
             
             # Verificar propiedad del pedido para usuarios normales
             if user.role not in ['admin', 'operator'] and pedido.usuario != user:
@@ -470,7 +495,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             return Shipment.objects.all()
         return Shipment.objects.filter(pedido__usuario=user)
     
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'], permission_classes=[TrackingPermission])
     def tracking(self, request, pk=None):
         """Endpoint para consultar el estado del envío"""
         shipment = self.get_object()
@@ -483,7 +508,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         }
         return Response(tracking_data)
     
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[])  # Sin permisos
     def update_status(self, request, pk=None):
         """Endpoint para actualizar el estado del envío (solo admin/operator)"""
         if not request.user.role in ['admin', 'operator']:
