@@ -9,8 +9,8 @@ class User(AbstractUser):
         ('client', 'Client'),
     ]
     role = models.CharField(max_length=20, choices=ROLES, default='client')
-    name = models.CharField(max_length=100, default='Anonimo')
     address = models.TextField(blank=True, default='')
+    email = models.EmailField(max_length=50,default='')
     phone = models.CharField(max_length=15, blank=True, default='')
     register_date = models.DateTimeField(auto_now_add=True)
 

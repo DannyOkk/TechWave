@@ -164,7 +164,7 @@ class ChangeRoleViewTest(APITestCase):
         
         url = reverse('change-role', kwargs={'user_id': self.target_user.id})
         data = {'role': 'admin'}
-        response = self.client.patch(url, data, format='json')
+        response = self.client.put(url, data, format='json')
         
         self.assertEqual(response.status_code, 200)
         self.assertIn('Rol actualizado correctamente', str(response.data))
@@ -179,7 +179,7 @@ class ChangeRoleViewTest(APITestCase):
         
         url = reverse('change-role', kwargs={'user_id': self.target_user.id})
         data = {'role': 'invalid_role'}
-        response = self.client.patch(url, data, format='json')
+        response = self.client.put(url, data, format='json')
         
         self.assertEqual(response.status_code, 400)
         self.assertIn('Rol inválido', str(response.data))
@@ -194,7 +194,7 @@ class ChangeRoleViewTest(APITestCase):
         
         url = reverse('change-role', kwargs={'user_id': 99999})  # ID inexistente
         data = {'role': 'admin'}
-        response = self.client.patch(url, data, format='json')
+        response = self.client.put(url, data, format='json')
         
         self.assertEqual(response.status_code, 404)
         self.assertIn('Usuario no encontrado', str(response.data))
@@ -205,7 +205,7 @@ class ChangeRoleViewTest(APITestCase):
         
         url = reverse('change-role', kwargs={'user_id': self.target_user.id})
         data = {'role': 'admin'}
-        response = self.client.patch(url, data, format='json')
+        response = self.client.put(url, data, format='json')
         
         self.assertEqual(response.status_code, 403)
         
@@ -213,7 +213,7 @@ class ChangeRoleViewTest(APITestCase):
         """Test que verifica que usuarios no autenticados no pueden cambiar roles"""
         url = reverse('change-role', kwargs={'user_id': self.target_user.id})
         data = {'role': 'admin'}
-        response = self.client.patch(url, data, format='json')
+        response = self.client.put(url, data, format='json')
         
         self.assertEqual(response.status_code, 403)  # Cambiar de 401 a 403
         
@@ -227,7 +227,7 @@ class ChangeRoleViewTest(APITestCase):
             with self.subTest(role=role):
                 url = reverse('change-role', kwargs={'user_id': self.target_user.id})
                 data = {'role': role}
-                response = self.client.patch(url, data, format='json')
+                response = self.client.put(url, data, format='json')
                 
                 self.assertEqual(response.status_code, 200)
                 
@@ -397,7 +397,7 @@ class ViewsIntegrationTest(APITestCase):
         # 5. Cambiar rol del usuario
         change_role_url = reverse('change-role', kwargs={'user_id': new_user.id})
         change_role_data = {'role': 'operator'}
-        change_role_response = self.client.patch(change_role_url, change_role_data, format='json')
+        change_role_response = self.client.put(change_role_url, change_role_data, format='json')
         self.assertEqual(change_role_response.status_code, 200)
         
         # 6. Verificar que el rol cambió

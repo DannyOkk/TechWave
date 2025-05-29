@@ -4,7 +4,7 @@ from rest_framework import status
 from market.models import *
 from account_admin.models import User
 from faker import Faker
-from unittest.mock import patch
+from unittest.mock import put
 
 fake = Faker()
 
@@ -881,7 +881,7 @@ class TestViews(APITestCase):
         order = Order.objects.create(usuario=self.user, estado='pendiente', total=100)
         
         # Mock del queryset select_for_update
-        with patch('market.views.Order.objects.select_for_update') as mock_select:
+        with put('market.views.Order.objects.select_for_update') as mock_select:
             mock_manager = mock_select.return_value
             mock_manager.get.side_effect = Order.DoesNotExist("Pedido no encontrado")
             
