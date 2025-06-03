@@ -84,7 +84,7 @@ class OrderSerializer(serializers.ModelSerializer):
         
         # Verificar si es una solicitud para edición
         request = self.context.get('request')
-        if request and request.method in ['PUT', 'PATCH']:
+        if request and request.method in ['PUT']:
             # Formato simplificado para edición
             
             # Simplificar usuario_detalle a solo username
