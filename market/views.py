@@ -133,19 +133,35 @@ class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [OrderPermission]
     
     def get_queryset(self):
-        """Filtra para que clientes vean solo sus órdenes"""
+        """
+        Filtra para que clientes vean solo sus órdenes.
+        Los administradores y operadores ven todas las órdenes.
+        Este método se usa para las rutas principales (GET /orders/, GET /orders/{id}/).
+        """
         user = self.request.user
-        if user.role in ['admin', 'operator']:
+        if hasattr(user, 'role') and user.role in ['admin', 'operator']:
             return Order.objects.all()
         return Order.objects.filter(usuario=user)
     
+    @action(detail=False, methods=['get'], url_path='my-orders', permission_classes=[IsAuthenticated])
+    def my_orders(self, request):
+        """
+        Endpoint dedicado para que CUALQUIER usuario (incluido admin)
+        vea solo sus propios pedidos.
+        """
+        user = request.user
+        orders = Order.objects.filter(usuario=user).order_by('-fecha')
+        serializer = self.get_serializer(orders, many=True)
+        return Response(serializer.data)
+
     def perform_create(self, serializer):
         """
         Crea una nueva orden asociada al usuario actual.
         Procesa los detalles de la orden si se proporcionan.
         """
+        user = self.request.user
         # Asignar el usuario actual como dueño de la orden
-        orden = serializer.save(usuario=self.request.user)
+        orden = serializer.save(usuario=user, direccion_envio=user.address)
         # Recalcular el total de la orden en base a los detalles
         orden.total_update()
         
@@ -338,12 +354,15 @@ class CartViewSet(viewsets.ModelViewSet):
                     {'error': f'Stock insuficiente para {item.producto.nombre}. Solo hay {item.producto.stock} unidades disponibles'}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            
+        direccion_cliente = getattr(request.user, 'address', 'Dirección no proporcionada por el cliente')
         
         # Crear nuevo pedido
         pedido = Order.objects.create(
             usuario=request.user,
             estado='pendiente',
-            total=carrito.total()
+            total=carrito.total(),
+            direccion_envio=direccion_cliente
         )
         
         # Transferir items del carrito al pedido (segundo chequeo y reducción de stock)
@@ -537,8 +556,88 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         shipment.save()
         return Response({'status': 'Estado de envío actualizado'}, status=status.HTTP_200_OK)
 
-"""
-class SupplierViewSet(viewsets.ModelViewSet):
-    queryset = Supplier.objects.all()
-    serializer_class = SupplierSerializer
-"""
+class CartItemViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar items individuales del carrito.
+    Permite actualizar cantidades y eliminar items específicos.
+    """
+    serializer_class = CartItemSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Retorna solo los items del carrito del usuario actual"""
+        return CartItem.objects.filter(carrito__usuario=self.request.user)
+    
+    def list(self, request, *args, **kwargs):
+        """Lista todos los items del carrito del usuario"""
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'items': serializer.data,
+            'total_items': queryset.count()
+        })
+    
+    def retrieve(self, request, *args, **kwargs):
+        """Obtiene un item específico del carrito"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+    
+    def update(self, request, *args, **kwargs):
+        """Actualizar cantidad de un item del carrito (PUT)"""
+        return self.partial_update(request, *args, **kwargs)
+    
+    def partial_update(self, request, *args, **kwargs):
+        """Actualizar cantidad de un item del carrito (PATCH)"""
+        instance = self.get_object()
+        cantidad = request.data.get('cantidad', instance.cantidad)
+        
+        # Validar que la cantidad sea un número válido
+        try:
+            cantidad = int(cantidad)
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'La cantidad debe ser un número válido'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Si la cantidad es 0 o negativa, eliminar el item
+        if cantidad <= 0:
+            instance.delete()
+            return Response({
+                'mensaje': 'Item eliminado del carrito',
+                'item_eliminado': True
+            }, status=status.HTTP_200_OK)
+        
+        # Validar stock disponible
+        if cantidad > instance.producto.stock:
+            return Response({
+                'error': f'Stock insuficiente. Solo hay {instance.producto.stock} unidades disponibles'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Actualizar cantidad
+        instance.cantidad = cantidad
+        instance.save()
+        
+        # Serializar la respuesta
+        serializer = self.get_serializer(instance)
+        
+        return Response({
+            'mensaje': 'Cantidad actualizada exitosamente',
+            'item': serializer.data,
+            'nueva_cantidad': instance.cantidad,
+            'subtotal': float(instance.subtotal())
+        }, status=status.HTTP_200_OK)
+    
+    def destroy(self, request, *args, **kwargs):
+        """Eliminar un item del carrito"""
+        instance = self.get_object()
+        producto_nombre = instance.producto.nombre
+        
+        # Eliminar el item
+        instance.delete()
+        
+        return Response({
+            'mensaje': f'"{producto_nombre}" eliminado del carrito',
+            'item_eliminado': True
+        }, status=status.HTTP_200_OK)

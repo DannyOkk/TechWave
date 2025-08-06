@@ -8,7 +8,6 @@ from rest_framework_simplejwt.views import (
 )
 
 router = routers.DefaultRouter()
-#router.register(r'users', UserViewSet, basename='user')
 
 urlpatterns = [
     path('accounts_admin/model/', include(router.urls)),
@@ -18,4 +17,8 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('token/verify/', TokenVerifyView.as_view(), name='token_verify'),
     path('logout/', LogoutView.as_view(), name='logout'),
+    path('profile/', user_profile, name='user_profile'),
+    path('change-password/', change_password, name='change_password'),
+    path('users/', list_users, name='list_users'),  # GET - Listar usuarios
+    path('users/<int:user_id>/', manage_user, name='manage_user'),  # GET, PUT, DELETE - Gestionar usuario específico
 ]

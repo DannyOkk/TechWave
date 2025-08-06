@@ -31,22 +31,36 @@ class ProductSerializer(serializers.ModelSerializer):
             'nombre': instance.categoria.nombre
         }
         return representation
+    
+class OrderDetailSerializer(serializers.ModelSerializer):
+    # Para mostrar detalles del producto en GET
+    producto_detalle = ProductSerializer(source='producto', read_only=True)
+    # Para aceptar IDs de producto en POST/PUT
+    producto = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(), 
+        write_only=True
+    )
+
+    class Meta:
+        model = OrderDetail
+        fields = ['id', 'pedido', 'producto', 'producto_detalle', 'cantidad', 'subtotal']
+        read_only_fields = ['subtotal']
 
 class OrderSerializer(serializers.ModelSerializer):
-    # Para lectura: obtener detalles del usuario
     usuario_detalle = UserSerializer(source='usuario', read_only=True)
     
-    # Cambio aquí: usar SlugRelatedField con username en lugar de PrimaryKeyRelatedField
     usuario = serializers.SlugRelatedField(
         queryset=User.objects.all(),
-        slug_field='username',  # Usar username en lugar de id
+        slug_field='username',
         required=True,
         write_only=True,
         help_text="Nombre de usuario del cliente que realiza el pedido. Debe existir en la base de datos."
     )
     
-    detalles = serializers.SerializerMethodField()
-    # Agregar campo para recibir detalles al crear la orden
+    # CAMBIO: Declaración directa del serializador de detalles.
+    # Es más limpio y estándar que usar SerializerMethodField.
+    detalles = OrderDetailSerializer(many=True, read_only=True)
+
     detalles_input = serializers.ListField(
         child=serializers.DictField(),
         write_only=True,
@@ -56,28 +70,11 @@ class OrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ['id', 'usuario', 'usuario_detalle', 'fecha', 'estado', 'total', 'detalles', 'detalles_input']
+        fields = ['id', 'usuario', 'usuario_detalle', 'fecha', 'estado', 'total', 'detalles', 'detalles_input', 'direccion_envio']
         read_only_fields = ['id', 'fecha', 'total']
         extra_kwargs = {
             'estado': {'default': 'pendiente', 'help_text': "Estado del pedido (default: pendiente)"}
         }
-    def get_detalles(self, obj):
-        """Obtiene los detalles de una orden de forma robusta"""
-        try:
-            # Intentar obtener detalles usando cualquier método disponible
-            if hasattr(obj, 'detalles'):
-                detalles_queryset = obj.detalles.all()
-            elif hasattr(obj, 'orderdetail_set'):
-                detalles_queryset = obj.orderdetail_set.all()
-            else:
-                return []  # No hay detalles disponibles
-            
-            # Serializar los detalles
-            serializer = OrderDetailSerializer(detalles_queryset, many=True)
-            return serializer.data
-        except Exception:
-            # Capturar cualquier error y devolver lista vacía
-            return []
     
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -110,53 +107,6 @@ class OrderSerializer(serializers.ModelSerializer):
                     })
                 representation['detalles'] = simplified_details
         return representation
-
-    def create(self, validated_data):
-        # Extraer datos de detalles si existen
-        detalles_data = self.initial_data.get('detalles', [])
-        
-        # Crear la orden correctamente con datos validados
-        order = Order.objects.create(**validated_data)
-        
-        # Crear los detalles asociados
-        for detalle_data in detalles_data:
-            try:
-                producto_id = detalle_data.get('producto')
-                if not producto_id:
-                    continue
-                    
-                producto = Product.objects.get(id=producto_id)
-                cantidad = detalle_data.get('cantidad', 1)
-                
-                # Crear detalle sin pasar subtotal (se calcula automáticamente)
-                OrderDetail.objects.create(
-                    pedido=order,
-                    producto=producto,
-                    cantidad=cantidad
-                )
-            except Product.DoesNotExist:
-                # Ignorar productos que no existen
-                pass
-        
-        # Actualizar el total de la orden
-        if hasattr(order, 'total_update'):
-            order.total_update()
-        
-        return order
-    
-class OrderDetailSerializer(serializers.ModelSerializer):
-    # Para mostrar detalles del producto en GET
-    producto_detalle = ProductSerializer(source='producto', read_only=True)
-    # Para aceptar IDs de producto en POST/PUT
-    producto = serializers.PrimaryKeyRelatedField(
-        queryset=Product.objects.all(), 
-        write_only=True
-    )
-
-    class Meta:
-        model = OrderDetail
-        fields = ['id', 'pedido', 'producto', 'producto_detalle', 'cantidad', 'subtotal']
-        read_only_fields = ['subtotal']
 
 class PaySerializer(serializers.ModelSerializer):
     # Para mostrar detalles del pedido en respuestas GET
@@ -249,13 +199,15 @@ class ShipmentSerializer(serializers.ModelSerializer):
 
 class CartItemSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
+    producto_descripcion = serializers.CharField(source='producto.descripcion', read_only=True)
+    categoria_nombre = serializers.CharField(source='producto.categoria.nombre', read_only=True)
     precio_unitario = serializers.DecimalField(source='producto.precio', max_digits=10, decimal_places=2, read_only=True)
     subtotal = serializers.SerializerMethodField()
     
     class Meta:
         model = CartItem
-        fields = ['id', 'producto', 'producto_nombre', 'cantidad', 'precio_unitario', 'subtotal']
-        read_only_fields = ['id', 'producto_nombre', 'precio_unitario', 'subtotal']
+        fields = ['id', 'producto', 'producto_nombre', 'producto_descripcion', 'categoria_nombre', 'cantidad', 'precio_unitario', 'subtotal']
+        read_only_fields = ['id', 'producto_nombre', 'producto_descripcion', 'categoria_nombre', 'precio_unitario', 'subtotal']
     
     def get_subtotal(self, obj):
         return float(obj.subtotal())

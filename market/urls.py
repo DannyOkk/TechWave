@@ -11,6 +11,7 @@ router.register(r'orders', views.OrderViewSet, basename='order')
 router.register(r'pay', views.PayViewSet, basename='pay')
 router.register(r'shipment', views.ShipmentViewSet, basename='shipment')
 router.register(r'cart', views.CartViewSet, basename='cart')
+router.register(r'cart-items', views.CartItemViewSet, basename='cartitem')  # ⭐ NUEVA LÍNEA
 
 urlpatterns = [
     path('market/model/', include(router.urls))

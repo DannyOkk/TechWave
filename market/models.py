@@ -30,15 +30,18 @@ class Product(models.Model):
 
 class Order(models.Model):
     ESTADOS = [
-        ('pendiente', 'Pendiente'),
-        ('procesando', 'Procesando'),
-        ('pagado', 'Pagado'),
-        ('cancelado', 'Cancelado'),
+        ('pendiente', 'Pendiente'),      # Pedido creado, esperando pago
+        ('pagado', 'Pagado'),            # Pago confirmado
+        ('preparando', 'Preparando'),    # Preparando el pedido para envío
+        ('enviado', 'Enviado'),          # Pedido en camino
+        ('entregado', 'Entregado'),      # Pedido completado
+        ('cancelado', 'Cancelado'),      # Pedido cancelado
     ]
     
     usuario = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)  # Relación con Client
     fecha = models.DateTimeField(auto_now_add=True)
     estado = models.CharField(max_length=20, choices=ESTADOS, default='pendiente')
+    direccion_envio = models.TextField(blank=True, default='')
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
     def total_update(self):
