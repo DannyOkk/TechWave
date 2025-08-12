@@ -7,12 +7,7 @@ class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = '__all__'
-"""
-class SupplierSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Supplier
-        fields = '__all__'
-"""
+
 class ProductSerializer(serializers.ModelSerializer):
     categoria = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all(),
@@ -227,3 +222,19 @@ class CartSerializer(serializers.ModelSerializer):
         representation['total'] = float(instance.total())
         representation['cantidad_items'] = instance.cantidad_items()
         return representation
+
+class ProductBriefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ('id', 'nombre', 'precio')  # ajusta a tus campos reales (name, price, etc.)
+
+class FavoriteSerializer(serializers.ModelSerializer):
+    product = ProductBriefSerializer(read_only=True)
+    product_id = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(), source='product', write_only=True
+    )
+
+    class Meta:
+        model = Favorite
+        fields = ('id', 'product', 'product_id', 'created_at')
+        read_only_fields = ('id', 'created_at')

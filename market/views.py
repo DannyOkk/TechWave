@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from rest_framework import viewsets, status
 from .serializer import *
 from .models import *
@@ -641,3 +641,53 @@ class CartItemViewSet(viewsets.ModelViewSet):
             'mensaje': f'"{producto_nombre}" eliminado del carrito',
             'item_eliminado': True
         }, status=status.HTTP_200_OK)
+
+class FavoriteViewSet(viewsets.ModelViewSet):
+    """
+    Favoritos del usuario.
+    - Clientes: solo sus favoritos.
+    - Admin/Operador: pueden ver todos; opcionalmente filtrar por ?user=<id>.
+    """
+    serializer_class = FavoriteSerializer
+    permission_classes = [IsAuthenticated, IsOwnerOrStaff]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Favorite.objects.select_related('product')
+        if getattr(user, 'role', None) in ['admin', 'operator']:
+            uid = self.request.query_params.get('user')
+            return qs.filter(user_id=uid) if uid else qs
+        return qs.filter(user=user)
+
+    def create(self, request, *args, **kwargs):
+        product_id = request.data.get('product_id')
+        if not product_id:
+            return Response({'detail': 'product_id es requerido'}, status=status.HTTP_400_BAD_REQUEST)
+        inst, created = Favorite.objects.get_or_create(user=request.user, product_id=product_id)
+        ser = self.get_serializer(inst)
+        return Response(ser.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        # Permitir DELETE por ?product_id=123 además de /favorites/<id>/
+        product_id = request.query_params.get('product_id')
+        if product_id:
+            fav = get_object_or_404(Favorite, user=request.user, product_id=product_id)
+            fav.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=['post'])
+    def bulk(self, request):
+        """
+        Fusión de favoritos de invitado al iniciar sesión.
+        Body: { "product_ids": [1,2,3] }
+        """
+        ids = request.data.get('product_ids') or []
+        if not isinstance(ids, list):
+            return Response({'detail': 'product_ids debe ser una lista'}, status=status.HTTP_400_BAD_REQUEST)
+        created = 0
+        for pid in ids:
+            _, ok = Favorite.objects.get_or_create(user=request.user, product_id=pid)
+            if ok:
+                created += 1
+        return Response({'merged': created}, status=status.HTTP_200_OK)

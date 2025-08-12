@@ -13,3 +13,7 @@ Accounts/migrations/__pycache__/
 **.vscode/
 .vscode/
 .coverage
+account_admin/management/commands/export_endpoints.py
+endpoints.md
+account_admin/management/__init__.py
+account_admin/management/commands/__init__.py

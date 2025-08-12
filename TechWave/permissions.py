@@ -109,14 +109,13 @@ class CategoryPermission(permissions.BasePermission):
     Clientes solo pueden ver categorías.
     """
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-            
-        # Métodos seguros para todos los usuarios autenticados
+        # Permitir acceso público a métodos seguros (GET, HEAD, OPTIONS)
         if request.method in permissions.SAFE_METHODS:
             return True
-            
-        # Modificaciones solo para admin y operadores
+        
+        # Para modificaciones, requerir autenticación y rol adecuado
+        if not request.user or not request.user.is_authenticated:
+            return False
         return request.user.role in ['admin', 'operator']
 
 class ProductPermission(permissions.BasePermission):
@@ -125,14 +124,13 @@ class ProductPermission(permissions.BasePermission):
     Clientes solo pueden ver productos.
     """
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-            
-        # Métodos seguros para todos los usuarios autenticados
+        # Permitir acceso público a métodos seguros (GET, HEAD, OPTIONS)
         if request.method in permissions.SAFE_METHODS:
             return True
-            
-        # Modificaciones solo para admin y operadores
+        
+        # Para modificaciones, requerir autenticación y rol adecuado
+        if not request.user or not request.user.is_authenticated:
+            return False
         return request.user.role in ['admin', 'operator']
     
 class OrderPermission(permissions.BasePermission):
