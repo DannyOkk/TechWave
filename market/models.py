@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from account_admin.models import User
 
 # Create your models here.
@@ -30,15 +31,18 @@ class Product(models.Model):
 
 class Order(models.Model):
     ESTADOS = [
-        ('pendiente', 'Pendiente'),
-        ('procesando', 'Procesando'),
-        ('pagado', 'Pagado'),
-        ('cancelado', 'Cancelado'),
+        ('pendiente', 'Pendiente'),      # Pedido creado, esperando pago
+        ('pagado', 'Pagado'),            # Pago confirmado
+        ('preparando', 'Preparando'),    # Preparando el pedido para envío
+        ('enviado', 'Enviado'),          # Pedido en camino
+        ('entregado', 'Entregado'),      # Pedido completado
+        ('cancelado', 'Cancelado'),      # Pedido cancelado
     ]
     
     usuario = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)  # Relación con Client
     fecha = models.DateTimeField(auto_now_add=True)
     estado = models.CharField(max_length=20, choices=ESTADOS, default='pendiente')
+    direccion_envio = models.TextField(blank=True, default='')
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
     def total_update(self):
@@ -166,17 +170,16 @@ class CartItem(models.Model):
         verbose_name_plural = "Items de Carrito"
         unique_together = ('carrito', 'producto')  # Un producto solo puede estar una vez en el carrito
 
-""" Proveedor
-class Supplier(models.Model):
-    nombre = models.CharField(max_length=255)
-    contacto = models.CharField(max_length=100)
-    telefono = models.CharField(max_length=20)
-    direccion = models.TextField()
-
-    def __str__(self):
-        return self.nombre
+class Favorite(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='favorites')
+    product = models.ForeignKey('market.Product', on_delete=models.CASCADE, related_name='favorites')
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = "Proveedor"  
-        verbose_name_plural = "Proveedores"
-"""
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'product'], name='uniq_favorite_user_product')
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.user} ♥ {self.product_id}'
