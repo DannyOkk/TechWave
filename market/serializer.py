@@ -104,31 +104,42 @@ class OrderSerializer(serializers.ModelSerializer):
         return representation
 
 class PaySerializer(serializers.ModelSerializer):
-    # Para mostrar detalles del pedido en respuestas GET
     pedido_detalle = serializers.SerializerMethodField(read_only=True)
-    
+    monto_pagado = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    creado = serializers.DateTimeField(read_only=True)
+    actualizado = serializers.DateTimeField(read_only=True)
+
     class Meta:
         model = Pay
-        fields = ['id', 'pedido', 'metodo', 'estado', 'pedido_detalle']
-        read_only_fields = ['id', 'monto_pagado']
+        fields = ['id', 'pedido', 'metodo', 'estado', 'monto_pagado', 'creado', 'actualizado', 'pedido_detalle']
+        read_only_fields = ['id', 'monto_pagado', 'creado', 'actualizado']
         extra_kwargs = {
             'metodo': {'required': True},
             'estado': {'default': 'pendiente'}
         }
-        
+
+    def validate(self, attrs):
+        pedido = attrs.get('pedido')
+        if pedido:
+            # No permitir nuevo pago si ya está pagado
+            if pedido.estado == 'pagado':
+                raise ValidationError('El pedido ya está pagado.')
+            # No permitir más de un pendiente simultáneo
+            if pedido.pagos.filter(estado='pendiente').exists():
+                raise ValidationError('Ya existe un pago pendiente para este pedido.')
+        return attrs
+
     def get_pedido_detalle(self, obj):
-        """Muestra información resumida del pedido asociado al pago"""
         return {
             'id': obj.pedido.id,
             'total': float(obj.pedido.total),
             'estado': obj.pedido.estado,
             'fecha': obj.pedido.fecha
         }
-    
+
     def create(self, validated_data):
-        # El monto_pagado se calcula automáticamente basado en el pedido
         pedido = validated_data.get('pedido')
-        if pedido:
+        if pedido and not validated_data.get('monto_pagado'):
             validated_data['monto_pagado'] = pedido.total
         return super().create(validated_data)
 

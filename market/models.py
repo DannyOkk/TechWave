@@ -1,4 +1,6 @@
 from django.db import models
+from django.utils import timezone
+from django.core.exceptions import ValidationError
 from django.conf import settings
 from account_admin.models import User
 
@@ -86,24 +88,57 @@ class OrderDetail(models.Model):
         verbose_name_plural = "Order Details"
 
 class Pay(models.Model):
-    pedido = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="pagos")  # <-- Relación 1:N
+    ESTADOS = [
+        ('pendiente', 'Pendiente'),
+        ('completado', 'Completado'),
+        ('fallido', 'Fallido'),
+    ]
+    pedido = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="pagos")  # 1:N
     metodo = models.CharField(max_length=20, choices=[
         ('tarjeta', 'Tarjeta de Crédito/Débito'),
         ('paypal', 'PayPal'),
         ('transferencia', 'Transferencia Bancaria'),
     ])
     monto_pagado = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    estado = models.CharField(max_length=20, choices=[
-        ('pendiente', 'Pendiente'),
-        ('completado', 'Completado'),
-    ], default='pendiente')
-    
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='pendiente')
+    creado = models.DateTimeField(default=timezone.now, editable=False)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        # En MySQL no tenemos constraint parcial, validamos en aplicación.
+        if self.pedido_id and self.estado == 'pendiente':
+            qs = Pay.objects.filter(pedido_id=self.pedido_id, estado='pendiente')
+            if self.pk:
+                qs = qs.exclude(pk=self.pk)
+            if qs.exists():
+                raise ValidationError('Ya existe un pago pendiente para este pedido.')
+        if not self.monto_pagado and self.pedido_id:
+            self.monto_pagado = self.pedido.total
+        super().save(*args, **kwargs)
+
+    def complete(self):
+        if self.estado != 'pendiente':
+            return
+        self.estado = 'completado'
+        self.save()
+        # Actualizar estado del pedido si aún estaba pendiente
+        if self.pedido.estado == 'pendiente':
+            self.pedido.estado = 'pagado'
+            self.pedido.save()
+
+    def fail(self):
+        if self.estado != 'pendiente':
+            return
+        self.estado = 'fallido'
+        self.save()
+
     def __str__(self):
         return f"Pago de {self.monto_pagado} - {self.metodo} ({self.estado})"
-    
+
     class Meta:
         verbose_name = "Pay"  
         verbose_name_plural = "Pays"
+        # Nota: constraint parcial removido por incompatibilidad MySQL (W036). Validación en save() / serializer.
 
 class Shipment(models.Model):
     pedido = models.OneToOneField(Order, on_delete=models.CASCADE)

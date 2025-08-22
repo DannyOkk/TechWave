@@ -401,101 +401,55 @@ class CartViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_201_CREATED)
 
 class PayViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet para pagos.
-    - Admin y operadores: acceso completo a todos los pagos
-    - Clientes: pueden crear pagos y ver los asociados a sus órdenes
-    """
-    queryset = Pay.objects.all()
-    serializer_class = PaySerializer  
+    """Pagos y acciones de simulación (completar / fallar)."""
+    queryset = Pay.objects.select_related('pedido', 'pedido__usuario')
+    serializer_class = PaySerializer
     permission_classes = [PaymentPermission]
-    
+
     def get_queryset(self):
         user = self.request.user
-        queryset = Pay.objects.all()
-        
-        # Filtros adicionales
-        estado = self.request.query_params.get('estado', None)
+        qs = super().get_queryset()
+        estado = self.request.query_params.get('estado')
         if estado:
-            queryset = queryset.filter(estado=estado)
-        
-        # AÑADIR: Filtrado por usuario para clientes en operación LIST
-        if user.role not in ['admin', 'operator'] and self.action == 'list':
-            queryset = queryset.filter(pedido__usuario=user)
-            
-        return queryset
-    
+            qs = qs.filter(estado=estado)
+        if getattr(user, 'role', None) not in ['admin', 'operator'] and self.action == 'list':
+            qs = qs.filter(pedido__usuario=user)
+        pedido_id = self.request.query_params.get('pedido')
+        if pedido_id:
+            qs = qs.filter(pedido_id=pedido_id)
+        return qs
+
     def perform_create(self, serializer):
-        """Valida que el usuario solo pueda crear pagos para sus órdenes"""
-        pedido_id = self.request.data.get('pedido')
+        pedido = serializer.validated_data.get('pedido')
         user = self.request.user
-        estado = self.request.data.get('estado', 'pendiente')
-        
-        try:
-            # Cambiar esta línea para hacer refresh explícito
-            pedido = Order.objects.select_for_update().get(id=pedido_id)
-            
-            # Verificar propiedad del pedido para usuarios normales
-            if user.role not in ['admin', 'operator'] and pedido.usuario != user:
-                raise serializers.ValidationError("No puedes crear pagos para pedidos que no te pertenecen")
-            
-            # Verificar estado del pedido
-            if pedido.estado not in ['pendiente', 'procesando']:
-                raise serializers.ValidationError(f"No se puede pagar un pedido en estado '{pedido.estado}'")
-            
-            # Usar automáticamente el total del pedido como monto pagado
-            monto_pagado = pedido.total
-                    
-            # Guardar con el estado proporcionado (o pendiente por defecto) y monto correcto
-            serializer.save(monto_pagado=monto_pagado, estado=estado)
-            
-        except Order.DoesNotExist:
-            raise serializers.ValidationError("Pedido no encontrado")
-            
-    @action(detail=True, methods=['post'])
-    def complete_payment(self, request, pk=None):
-        """Endpoint para marcar un pago como completado"""
-        payment = self.get_object()
-        
-        # Verificar que solo admin/operator puedan completar pagos manualmente
-        if request.user.role not in ['admin', 'operator']:
-            return Response({'error': 'Solo administradores y operadores pueden completar pagos manualmente'}, 
-                        status=status.HTTP_403_FORBIDDEN)
-        
-        if payment.estado != 'pendiente':
-            return Response({'error': f'No se puede completar un pago en estado {payment.estado}'}, 
-                        status=status.HTTP_400_BAD_REQUEST)
-        
-        # Actualizar el pago
-        payment.estado = 'completado'
-        payment.save()
-        
-        # Actualizar el estado del pedido
-        pedido = payment.pedido
-        pedido.estado = 'pagado'
-        pedido.save()
-        
-        return Response({
-            'status': 'pago completado',
-            'pedido_actualizado': True,
-            'nuevo_estado_pedido': pedido.estado
-        }, status=status.HTTP_200_OK)
+        if getattr(user, 'role', None) not in ['admin', 'operator'] and pedido.usuario != user:
+            raise serializers.ValidationError('No puedes crear pagos para pedidos ajenos')
+        if pedido.estado not in ['pendiente']:
+            raise serializers.ValidationError(f"No se puede pagar un pedido en estado '{pedido.estado}'")
+        serializer.save()
 
     @action(detail=True, methods=['post'])
-    def cancelar(self, request, pk=None):
-        """Endpoint para cancelar un pago pendiente"""
+    def complete(self, request, pk=None):
         pago = self.get_object()
-        
         if pago.estado != 'pendiente':
-            return Response(
-                {"error": f"No se puede cancelar un pago en estado '{pago.estado}'"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        pago.estado = 'cancelado'
-        pago.save()
-        
-        return Response({"mensaje": "Pago cancelado correctamente"}, status=status.HTTP_200_OK)
+            return Response({'error': 'Solo se puede completar un pago pendiente'}, status=status.HTTP_400_BAD_REQUEST)
+        # Permitir al dueño o staff
+        if getattr(request.user, 'role', None) not in ['admin', 'operator'] and pago.pedido.usuario != request.user:
+            return Response({'error': 'No autorizado'}, status=status.HTTP_403_FORBIDDEN)
+        pago.complete()
+        ser = self.get_serializer(pago)
+        return Response(ser.data)
+
+    @action(detail=True, methods=['post'])
+    def fail(self, request, pk=None):
+        pago = self.get_object()
+        if pago.estado != 'pendiente':
+            return Response({'error': 'Solo se puede fallar un pago pendiente'}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(request.user, 'role', None) not in ['admin', 'operator'] and pago.pedido.usuario != request.user:
+            return Response({'error': 'No autorizado'}, status=status.HTTP_403_FORBIDDEN)
+        pago.fail()
+        ser = self.get_serializer(pago)
+        return Response(ser.data)
 
 class ShipmentViewSet(viewsets.ModelViewSet):
     """
