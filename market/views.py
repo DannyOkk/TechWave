@@ -6,6 +6,7 @@ from TechWave.permissions import *
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 
 # Create your views here.
 
@@ -39,6 +40,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
     permission_classes = [ProductPermission]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     
     def get_queryset(self):
         """Permite filtrar productos por nombre, categoría o precio"""
@@ -309,6 +311,30 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.total_update()  # Usa el método personalizado del modelo
         return Response({'status': 'total actualizado', 'total': order.total}, 
                         status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def force_delete(self, request, pk=None):
+        """
+        Elimina forzadamente un pedido (solo admin/operator),
+        restaurando stock y cerrando pagos abiertos previamente.
+        """
+        if getattr(request.user, 'role', None) not in ['admin', 'operator']:
+            return Response({'error': 'No autorizado'}, status=status.HTTP_403_FORBIDDEN)
+        order = self.get_object()
+        # 1) Cerrar pagos abiertos (pendiente/en_revision) como fallido
+        abiertos = Pay.objects.filter(pedido=order, estado__in=['pendiente', 'en_revision'])
+        for p in abiertos:
+            p.fail()
+        # 2) Restaurar stock si el pedido no estaba cancelado aún
+        if order.estado != 'cancelado':
+            for det in order.detalles.all():
+                prod = det.producto
+                prod.stock += det.cantidad
+                prod.save()
+        # 3) Eliminar pagos y pedido
+        Pay.objects.filter(pedido=order).delete()
+        order.delete()
+        return Response({'status': 'pedido eliminado'}, status=status.HTTP_200_OK)
     
 class CartViewSet(viewsets.ModelViewSet):
     """
@@ -405,6 +431,7 @@ class PayViewSet(viewsets.ModelViewSet):
     queryset = Pay.objects.select_related('pedido', 'pedido__usuario')
     serializer_class = PaySerializer
     permission_classes = [PaymentPermission]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_queryset(self):
         user = self.request.user
@@ -431,10 +458,10 @@ class PayViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
         pago = self.get_object()
-        if pago.estado != 'pendiente':
-            return Response({'error': 'Solo se puede completar un pago pendiente'}, status=status.HTTP_400_BAD_REQUEST)
-        # Permitir al dueño o staff
-        if getattr(request.user, 'role', None) not in ['admin', 'operator'] and pago.pedido.usuario != request.user:
+        if pago.estado not in ['pendiente','en_revision']:
+            return Response({'error': 'Solo se puede completar un pago pendiente o en revisión'}, status=status.HTTP_400_BAD_REQUEST)
+        # Solo admin/operator pueden completar (aprobar) directamente
+        if getattr(request.user, 'role', None) not in ['admin', 'operator']:
             return Response({'error': 'No autorizado'}, status=status.HTTP_403_FORBIDDEN)
         pago.complete()
         ser = self.get_serializer(pago)
@@ -443,13 +470,84 @@ class PayViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def fail(self, request, pk=None):
         pago = self.get_object()
-        if pago.estado != 'pendiente':
-            return Response({'error': 'Solo se puede fallar un pago pendiente'}, status=status.HTTP_400_BAD_REQUEST)
+        if pago.estado not in ['pendiente','en_revision']:
+            return Response({'error': 'Solo se puede fallar un pago pendiente o en revisión'}, status=status.HTTP_400_BAD_REQUEST)
+        # Permitir al dueño o staff
         if getattr(request.user, 'role', None) not in ['admin', 'operator'] and pago.pedido.usuario != request.user:
             return Response({'error': 'No autorizado'}, status=status.HTTP_403_FORBIDDEN)
         pago.fail()
         ser = self.get_serializer(pago)
         return Response(ser.data)
+
+    @action(detail=True, methods=['post'])
+    def review(self, request, pk=None):
+        """Marcar un pago como 'en revisión' (admin/operator)."""
+        pago = self.get_object()
+        if getattr(request.user, 'role', None) not in ['admin', 'operator']:
+            return Response({'error': 'No autorizado'}, status=status.HTTP_403_FORBIDDEN)
+        if pago.estado not in ['pendiente']:
+            return Response({'error': 'Solo se puede pasar a revisión un pago pendiente'}, status=status.HTTP_400_BAD_REQUEST)
+        pago.estado = 'en_revision'
+        pago.save()
+        # Mantener consistencia: si el pedido estaba 'pendiente', también pasarlo a 'en_revision'
+        pedido = pago.pedido
+        if pedido and pedido.estado == 'pendiente':
+            pedido.estado = 'en_revision'
+            pedido.save()
+        return Response(self.get_serializer(pago).data)
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """Aprobar un pago en revisión (admin/operator)."""
+        pago = self.get_object()
+        if getattr(request.user, 'role', None) not in ['admin', 'operator']:
+            return Response({'error': 'No autorizado'}, status=status.HTTP_403_FORBIDDEN)
+        if pago.estado != 'en_revision':
+            return Response({'error': 'Solo se puede aprobar un pago en revisión'}, status=status.HTTP_400_BAD_REQUEST)
+        pago.complete()
+        return Response(self.get_serializer(pago).data)
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Rechazar un pago en revisión (admin/operator)."""
+        pago = self.get_object()
+        if getattr(request.user, 'role', None) not in ['admin', 'operator']:
+            return Response({'error': 'No autorizado'}, status=status.HTTP_403_FORBIDDEN)
+        if pago.estado != 'en_revision':
+            return Response({'error': 'Solo se puede rechazar un pago en revisión'}, status=status.HTTP_400_BAD_REQUEST)
+        pago.fail()
+        # Devolver el pedido a 'pendiente' si estaba en revisión
+        pedido = pago.pedido
+        if pedido and pedido.estado == 'en_revision':
+            pedido.estado = 'pendiente'
+            pedido.save()
+        return Response(self.get_serializer(pago).data)
+
+    @action(detail=True, methods=['post'], parser_classes=[JSONParser, MultiPartParser, FormParser])
+    def proof(self, request, pk=None):
+        """Cliente o admin sube/declara comprobante; pasa el pago a 'en_revision'."""
+        pago = self.get_object()
+        # Dueño o staff
+        if getattr(request.user, 'role', None) not in ['admin', 'operator'] and pago.pedido.usuario != request.user:
+            return Response({'error': 'No autorizado'}, status=status.HTTP_403_FORBIDDEN)
+        if pago.estado not in ['pendiente']:
+            return Response({'error': 'Solo se puede adjuntar comprobante a pagos pendientes'}, status=status.HTTP_400_BAD_REQUEST)
+        file = request.data.get('comprobante_archivo')
+        url = request.data.get('comprobante_url')
+        if not file and not url:
+            return Response({'error': 'Debe enviar comprobante_archivo o comprobante_url'}, status=status.HTTP_400_BAD_REQUEST)
+        if file:
+            pago.comprobante_archivo = file
+        if url:
+            pago.comprobante_url = url
+        pago.estado = 'en_revision'
+        pago.save()
+        # Marcar también el pedido como en revisión
+        if pago.pedido.estado == 'pendiente':
+            pedido = pago.pedido
+            pedido.estado = 'en_revision'
+            pedido.save()
+        return Response(self.get_serializer(pago).data)
 
 class ShipmentViewSet(viewsets.ModelViewSet):
     """

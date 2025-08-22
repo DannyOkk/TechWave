@@ -2,6 +2,8 @@ from rest_framework import serializers
 from .models import *
 from account_admin.serializer import UserSerializer
 from rest_framework.exceptions import ValidationError
+from rest_framework import parsers
+import json
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -13,10 +15,11 @@ class ProductSerializer(serializers.ModelSerializer):
         queryset=Category.objects.all(),
         required=True
     )
+    imagen = serializers.ImageField(required=False, allow_null=True)
     
     class Meta:
         model = Product
-        fields = ['id', 'nombre', 'descripcion', 'precio', 'stock', 'categoria']
+        fields = ['id', 'nombre', 'descripcion', 'precio', 'stock', 'categoria', 'imagen']
     
     def to_representation(self, instance):
         # Esto es para mostrar detalles de la categoría en las respuestas GET
@@ -25,6 +28,14 @@ class ProductSerializer(serializers.ModelSerializer):
             'id': instance.categoria.id,
             'nombre': instance.categoria.nombre
         }
+        # Imagen (URL)
+        try:
+            if instance.imagen and hasattr(instance.imagen, 'url'):
+                representation['imagen_url'] = instance.imagen.url
+            else:
+                representation['imagen_url'] = ''
+        except Exception:
+            representation['imagen_url'] = ''
         return representation
     
 class OrderDetailSerializer(serializers.ModelSerializer):
@@ -108,11 +119,18 @@ class PaySerializer(serializers.ModelSerializer):
     monto_pagado = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     creado = serializers.DateTimeField(read_only=True)
     actualizado = serializers.DateTimeField(read_only=True)
+    metadata = serializers.DictField(required=False, default=dict)
+    external_id = serializers.CharField(required=False, allow_blank=True, default='')
+    external_redirect_url = serializers.URLField(required=False, allow_blank=True, default='')
+    comprobante_url = serializers.URLField(required=False, allow_blank=True, default='')
+    comprobante_archivo = serializers.FileField(required=False, allow_null=True, write_only=True)
+    comprobante_archivo_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Pay
-        fields = ['id', 'pedido', 'metodo', 'estado', 'monto_pagado', 'creado', 'actualizado', 'pedido_detalle']
-        read_only_fields = ['id', 'monto_pagado', 'creado', 'actualizado']
+        fields = ['id', 'pedido', 'metodo', 'estado', 'monto_pagado', 'creado', 'actualizado',
+                  'metadata', 'external_id', 'external_redirect_url', 'comprobante_url', 'comprobante_archivo', 'comprobante_archivo_url', 'pedido_detalle']
+        read_only_fields = ['id', 'monto_pagado', 'creado', 'actualizado', 'comprobante_archivo_url']
         extra_kwargs = {
             'metodo': {'required': True},
             'estado': {'default': 'pendiente'}
@@ -120,13 +138,27 @@ class PaySerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         pedido = attrs.get('pedido')
+        metodo = attrs.get('metodo') or getattr(self.instance, 'metodo', None)
+        metadata = attrs.get('metadata') or {}
+        # Si metadata viene como string (multipart), parsear JSON
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except Exception:
+                raise ValidationError('metadata debe ser un JSON válido')
+            attrs['metadata'] = metadata
+        # Validación por método
+        if metodo == 'tarjeta':
+            forbidden = {'number', 'card_number', 'cvv', 'cvc', 'exp', 'exp_month', 'exp_year'}
+            if any(k in metadata for k in forbidden):
+                raise ValidationError('No se permiten datos sensibles de tarjeta en metadata.')
         if pedido:
             # No permitir nuevo pago si ya está pagado
             if pedido.estado == 'pagado':
                 raise ValidationError('El pedido ya está pagado.')
-            # No permitir más de un pendiente simultáneo
-            if pedido.pagos.filter(estado='pendiente').exists():
-                raise ValidationError('Ya existe un pago pendiente para este pedido.')
+            # No permitir más de un pago abierto simultáneo (pendiente o en revisión)
+            if pedido.pagos.filter(estado__in=['pendiente','en_revision']).exists():
+                raise ValidationError('Ya existe un pago abierto para este pedido.')
         return attrs
 
     def get_pedido_detalle(self, obj):
@@ -141,7 +173,21 @@ class PaySerializer(serializers.ModelSerializer):
         pedido = validated_data.get('pedido')
         if pedido and not validated_data.get('monto_pagado'):
             validated_data['monto_pagado'] = pedido.total
+        # Si viene comprobante (archivo o URL), pasar a 'en_revision'
+        if validated_data.get('comprobante_archivo') or validated_data.get('comprobante_url'):
+            validated_data['estado'] = 'en_revision'
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        return super().update(instance, validated_data)
+
+    def get_comprobante_archivo_url(self, obj):
+        try:
+            if obj.comprobante_archivo and hasattr(obj.comprobante_archivo, 'url'):
+                return obj.comprobante_archivo.url
+        except Exception:
+            return ''
+        return ''
 
 class ShipmentSerializer(serializers.ModelSerializer):
     # Para mostrar detalles del pedido en respuestas GET
