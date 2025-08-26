@@ -19,7 +19,16 @@ class ProductSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Product
-        fields = ['id', 'nombre', 'descripcion', 'precio', 'stock', 'categoria', 'imagen']
+        fields = ['id', 'nombre', 'descripcion', 'precio', 'stock', 'categoria', 'imagen', 'imagen_url']
+
+    def get_imagen_url(self, obj):
+        # Si cloudinary retorna URL absoluta, esto la devuelve tal cual
+        if obj.imagen:
+            request = self.context.get('request')
+            url = obj.imagen.url  # normalmente ya es absoluto con Cloudinary
+            # si quieres forzar absolute use request.build_absolute_uri(url) cuando sea necesario
+            return url
+        return None
     
     def to_representation(self, instance):
         # Esto es para mostrar detalles de la categoría en las respuestas GET
