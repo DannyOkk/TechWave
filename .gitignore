@@ -17,3 +17,4 @@ account_admin/management/commands/export_endpoints.py
 endpoints.md
 account_admin/management/__init__.py
 account_admin/management/commands/__init__.py
+.env

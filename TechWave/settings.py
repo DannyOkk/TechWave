@@ -12,21 +12,27 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+import os
+import dj_database_url
+from dotenv import load_dotenv
+import os
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-t6s4!bn!cz*rjh9sk&r603mk2o_8(jdwo!s^l&o)oyikjeutw+'
+SECRET_KEY = os.getenv("SECRET_KEY", "unsafe-local-dev-secret")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "False").lower() in ("1", "true", "yes")
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", ".onrender.com,.render.com,localhost").split(",")
 
 
 # Application definition
@@ -46,6 +52,9 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     "django_extensions",
+    "cloudinary",
+    "cloudinary_storage",
+    'django_cleanup.apps.CleanupConfig',
 ]
 
 MIDDLEWARE = [
@@ -57,6 +66,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "whitenoise.middleware.WhiteNoiseMiddleware",
 ]
 
 ROOT_URLCONF = 'TechWave.urls'
@@ -84,18 +94,18 @@ WSGI_APPLICATION = 'TechWave.wsgi.application'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'techwavedb',  
-        'USER': 'root',         
-        'PASSWORD': 'admin',  
-        'HOST': 'localhost',          
-        'PORT': '3306',               
-        'OPTIONS': {
-            'charset': 'utf8mb4',  
-        }
-    }
+    "default": dj_database_url.config(
+        default=os.getenv("DATABASE_URL", "sqlite:///db.sqlite3"),
+        conn_max_age=600,
+    )
 }
+
+# If the selected engine is Postgres, ensure SSL mode is required in options.
+engine = DATABASES["default"].get("ENGINE", "")
+if "postgres" in engine or "psycopg2" in engine:
+    DATABASES["default"].setdefault("OPTIONS", {})
+    # psycopg2 expects sslmode, dj_database_url's ssl_require can add sslmode to options
+    DATABASES["default"]["OPTIONS"]["sslmode"] = "require"
 
 
 # Password validation
@@ -135,10 +145,31 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
-# Archivos de medios (subidas de comprobantes, etc.)
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+# Archivos de medios y configuración de almacenamiento (Django 5 usa STORAGES)
+if DEBUG:
+    # Desarrollo: media local en el filesystem
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+else:
+    # Producción: media en Cloudinary
+    STORAGES = {
+        "default": {
+            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
