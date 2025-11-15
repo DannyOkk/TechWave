@@ -1,4 +1,6 @@
 from django.db import models
+from django.utils import timezone
+from django.core.exceptions import ValidationError
 from django.conf import settings
 from account_admin.models import User
 
@@ -20,6 +22,7 @@ class Product(models.Model):
     precio = models.DecimalField(max_digits=10, decimal_places=2)
     stock = models.PositiveIntegerField()
     categoria = models.ForeignKey(Category, on_delete=models.CASCADE)
+    imagen = models.ImageField(upload_to='products/', blank=True, null=True)
     #proveedor = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
@@ -32,6 +35,7 @@ class Product(models.Model):
 class Order(models.Model):
     ESTADOS = [
         ('pendiente', 'Pendiente'),      # Pedido creado, esperando pago
+    ('en_revision', 'En revisión'),  # Pago enviado, esperando revisión
         ('pagado', 'Pagado'),            # Pago confirmado
         ('preparando', 'Preparando'),    # Preparando el pedido para envío
         ('enviado', 'Enviado'),          # Pedido en camino
@@ -86,24 +90,68 @@ class OrderDetail(models.Model):
         verbose_name_plural = "Order Details"
 
 class Pay(models.Model):
-    pedido = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="pagos")  # <-- Relación 1:N
+    ESTADOS = [
+        ('pendiente', 'Pendiente'),
+    ('en_revision', 'En revisión'),
+        ('completado', 'Completado'),
+        ('fallido', 'Fallido'),
+    ]
+    pedido = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="pagos")  # 1:N
     metodo = models.CharField(max_length=20, choices=[
         ('tarjeta', 'Tarjeta de Crédito/Débito'),
         ('paypal', 'PayPal'),
         ('transferencia', 'Transferencia Bancaria'),
     ])
     monto_pagado = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    estado = models.CharField(max_length=20, choices=[
-        ('pendiente', 'Pendiente'),
-        ('completado', 'Completado'),
-    ], default='pendiente')
-    
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='pendiente')
+    creado = models.DateTimeField(default=timezone.now, editable=False)
+    actualizado = models.DateTimeField(auto_now=True)
+    # Datos adicionales por método (no guardar datos sensibles de tarjeta)
+    metadata = models.JSONField(default=dict, blank=True)
+    # Referencias externas (p. ej. id de PayPal, referencia de transferencia)
+    external_id = models.CharField(max_length=120, blank=True, default='')
+    # URL de redirección (PayPal) y comprobante para transferencia
+    external_redirect_url = models.URLField(blank=True, default='')
+    comprobante_url = models.URLField(blank=True, default='')
+    # Comprobante subido (imagen o PDF)
+    comprobante_archivo = models.FileField(upload_to='comprobantes/', blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        # En MySQL no tenemos constraint parcial, validamos en aplicación.
+        if self.pedido_id and self.estado in ('pendiente', 'en_revision'):
+            # Evitar múltiples pagos "abiertos" (pendiente o en revisión) para el mismo pedido
+            qs = Pay.objects.filter(pedido_id=self.pedido_id, estado__in=['pendiente', 'en_revision'])
+            if self.pk:
+                qs = qs.exclude(pk=self.pk)
+            if qs.exists():
+                raise ValidationError('Ya existe un pago abierto (pendiente o en revisión) para este pedido.')
+        if not self.monto_pagado and self.pedido_id:
+            self.monto_pagado = self.pedido.total
+        super().save(*args, **kwargs)
+
+    def complete(self):
+        if self.estado not in ['pendiente', 'en_revision']:
+            return
+        self.estado = 'completado'
+        self.save()
+        # Actualizar estado del pedido si aún estaba pendiente
+        if self.pedido.estado in ['pendiente', 'en_revision']:
+            self.pedido.estado = 'pagado'
+            self.pedido.save()
+
+    def fail(self):
+        if self.estado not in ['pendiente', 'en_revision']:
+            return
+        self.estado = 'fallido'
+        self.save()
+
     def __str__(self):
         return f"Pago de {self.monto_pagado} - {self.metodo} ({self.estado})"
-    
+
     class Meta:
         verbose_name = "Pay"  
         verbose_name_plural = "Pays"
+        # Nota: constraint parcial removido por incompatibilidad MySQL (W036). Validación en save() / serializer.
 
 class Shipment(models.Model):
     pedido = models.OneToOneField(Order, on_delete=models.CASCADE)
